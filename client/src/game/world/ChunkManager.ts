@@ -8,6 +8,7 @@ import {
   getBiomeAt,
 } from 'poke-ter-shared';
 import { CollisionSystem, Collider } from '../../engine/Collision.js';
+import { envSystem } from '../../engine/EnvironmentSystem.js';
 
 interface Chunk {
   cx: number;
@@ -216,45 +217,55 @@ export class ChunkManager {
       ctx.ellipse(screenX + 12, screenY + 14, 14, 6, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      const cx = screenX + 8;
-      
+      // Tree sway calculation
+      const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.002, 3);
+      const sway2 = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.003, 1, Math.PI / 2);
+
+      const cx = screenX + 8 + sway;
+      const cy = screenY + sway2;
+
       if (h > 0.6) {
         ctx.fillStyle = biome.treeColor;
-        ctx.beginPath(); ctx.moveTo(cx, screenY - 18); ctx.lineTo(cx - 10, screenY + 6); ctx.lineTo(cx + 10, screenY + 6); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 18); ctx.lineTo(cx - 10, cy + 6); ctx.lineTo(cx + 10, cy + 6); ctx.fill();
         ctx.fillStyle = '#1a3311';
-        ctx.beginPath(); ctx.moveTo(cx, screenY - 18); ctx.lineTo(cx, screenY + 6); ctx.lineTo(cx + 10, screenY + 6); ctx.fill();
-        
+        ctx.beginPath(); ctx.moveTo(cx, cy - 18); ctx.lineTo(cx, cy + 6); ctx.lineTo(cx + 10, cy + 6); ctx.fill();
+
         ctx.fillStyle = biome.treeColor;
-        ctx.beginPath(); ctx.moveTo(cx, screenY - 8); ctx.lineTo(cx - 12, screenY + 10); ctx.lineTo(cx + 12, screenY + 10); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx - 12, cy + 10); ctx.lineTo(cx + 12, cy + 10); ctx.fill();
         ctx.fillStyle = '#1a3311';
-        ctx.beginPath(); ctx.moveTo(cx, screenY - 8); ctx.lineTo(cx, screenY + 10); ctx.lineTo(cx + 12, screenY + 10); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 10); ctx.lineTo(cx + 12, cy + 10); ctx.fill();
       } else {
         ctx.fillStyle = biome.treeColor;
-        ctx.beginPath(); ctx.arc(cx, screenY - 6, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy - 6, 12, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = biome.tallGrassColor;
-        ctx.beginPath(); ctx.arc(cx, screenY - 10, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy - 10, 9, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = biome.treeColor;
-        ctx.beginPath(); ctx.arc(cx - 8, screenY + 2, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + 8, screenY + 2, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx - 8, cy + 2, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 8, cy + 2, 7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = biome.grassColor;
-        ctx.beginPath(); ctx.arc(cx - 4, screenY - 12, 4, 0, Math.PI * 2); ctx.fill();
-        
+        ctx.beginPath(); ctx.arc(cx - 4, cy - 12, 4, 0, Math.PI * 2); ctx.fill();
+
         if (h < 0.2) {
           ctx.fillStyle = '#ff4444';
-          ctx.fillRect(cx - 6, screenY - 4, 2, 2);
-          ctx.fillRect(cx + 4, screenY, 2, 2);
-          ctx.fillRect(cx + 2, screenY - 10, 2, 2);
+          ctx.fillRect(cx - 6, cy - 4, 2, 2);
+          ctx.fillRect(cx + 4, cy, 2, 2);
+          ctx.fillRect(cx + 2, cy - 10, 2, 2);
         }
       }
     } else if (type === 'tall_grass') {
+      const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.003, 1.5);
+      const sway1 = sway * 1.0;
+      const sway2 = envSystem.getSwayOffset(gx * TILE_SIZE + 5, gy * TILE_SIZE, 0.003, 1.5, 0.5);
+      const sway3 = envSystem.getSwayOffset(gx * TILE_SIZE + 10, gy * TILE_SIZE, 0.003, 1.5, 1.0);
+
       ctx.fillStyle = biome.tallGrassColor;
-      ctx.fillRect(screenX + 4, screenY + 6, 2, 10);
-      ctx.fillRect(screenX + 10, screenY + 5, 2, 11);
-      ctx.fillRect(screenX + 14, screenY + 8, 2, 8);
-      
+      ctx.fillRect(screenX + 4 + sway1, screenY + 6, 2, 10);
+      ctx.fillRect(screenX + 10 + sway2, screenY + 5, 2, 11);
+      ctx.fillRect(screenX + 14 + sway3, screenY + 8, 2, 8);
+
       if (h > 0.8) {
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(screenX + 4, screenY + 5, 2, 2);
+        ctx.fillRect(screenX + 4 + sway1, screenY + 5, 2, 2);
       }
     } else if (type === 'building_roof') {
       const leftTile = this.getTile((gx - 1) * TILE_SIZE, gy * TILE_SIZE);
@@ -338,16 +349,17 @@ export class ChunkManager {
            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
            ctx.fillRect(x, y, 4, TILE_SIZE);
         }
-
         if (h > 0.8) {
+          const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.003, 1.0);
           ctx.fillStyle = biome.tallGrassColor;
-          ctx.fillRect(x + 4, y + 8, 2, 4);
-          ctx.fillRect(x + 10, y + 4, 2, 3);
+          ctx.fillRect(x + 4 + sway, y + 8, 2, 4);
+          ctx.fillRect(x + 10 + sway, y + 4, 2, 3);
         } else if (h > 0.75) {
+          const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.002, 0.8);
           ctx.fillStyle = biome.id === 'forest' ? '#9933ff' : '#ff99aa';
-          ctx.fillRect(x + 6, y + 6, 2, 2);
+          ctx.fillRect(x + 6 + sway, y + 6, 2, 2);
           ctx.fillStyle = biome.tallGrassColor;
-          ctx.fillRect(x + 6, y + 8, 2, 2);
+          ctx.fillRect(x + 6 + sway * 0.5, y + 8, 2, 2);
         } else if (h < 0.05) {
           ctx.fillStyle = '#7a7a7a';
           ctx.fillRect(x + 8, y + 10, 3, 2);
@@ -384,21 +396,23 @@ export class ChunkManager {
       case 3: { // Water
         ctx.fillStyle = biome.id === 'lake' ? '#2e5b82' : '#3b6fa0';
         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-        const time = Date.now() * 0.001;
-        const waveOffset = Math.sin(time + gx + gy) * 2;
+        const waveOffset = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.002, 2.0);
+        const waveOffset2 = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.0025, 1.5, Math.PI);
         ctx.fillStyle = biome.id === 'lake' ? '#3d729e' : '#4b7fb0';
         ctx.fillRect(x + 2 + waveOffset, y + 4, 8, 2);
-        ctx.fillRect(x + 8 - waveOffset, y + 10, 6, 2);
+        ctx.fillRect(x + 8 + waveOffset2, y + 10, 6, 2);
         const isUpWater = this.getTile(gx * TILE_SIZE, (gy - 1) * TILE_SIZE) === 3;
         if (!isUpWater) {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-          ctx.fillRect(x, y, TILE_SIZE, 2);
+          const shoreSway = Math.max(0, envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.0015, 2.0));
+          ctx.fillRect(x, y, TILE_SIZE, 2 + shoreSway);
         }
         if (h < 0.1 && biome.id === 'lake') {
           ctx.fillStyle = '#4da64d'; // lilypad
-          ctx.fillRect(x + 4, y + 8, 6, 4);
+          const lilypadSway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.001, 1.0);
+          ctx.fillRect(x + 4 + lilypadSway, y + 8, 6, 4);
           ctx.fillStyle = '#3a8a3a';
-          ctx.fillRect(x + 6, y + 10, 2, 2);
+          ctx.fillRect(x + 6 + lilypadSway, y + 10, 2, 2);
         }
         break;
       }
@@ -455,6 +469,8 @@ export class ChunkManager {
            ctx.fillStyle = '#4a2e15';
            ctx.fillRect(x + 4, y + 8, 8, 1);
            ctx.fillRect(x + 7, y + 4, 1, 8);
+           ctx.strokeStyle = '#4a2e15';
+           ctx.lineWidth = 1;
            ctx.strokeRect(x + 4, y + 4, 8, 8);
         }
         break;
@@ -489,8 +505,8 @@ export class ChunkManager {
         ctx.fillStyle = '#110b29';
         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
         
-        // Draw swirling rings using a time-dependent angle or scale
-        const time = Date.now() * 0.005;
+        // Draw swirling rings using envSystem time
+        const time = envSystem.time * 0.005;
         const radius1 = 6 + Math.sin(time) * 1.5;
         const radius2 = 4 + Math.cos(time + 1) * 1.0;
         

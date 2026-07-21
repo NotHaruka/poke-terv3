@@ -5,10 +5,12 @@ import { Renderer } from '../../engine/Renderer.js';
 import { InputManager } from '../../engine/InputManager.js';
 import { Camera } from '../../engine/Camera.js';
 import { CollisionSystem, Collider } from '../../engine/Collision.js';
+import { ParticleSystem } from '../../engine/ParticleSystem.js';
 import { Player } from '../entities/Player.js';
 import { ChunkManager } from '../world/ChunkManager.js';
 import { UIManager } from '../ui/UIManager.js';
 import { NetworkClient } from '../network/NetworkClient.js';
+import { envSystem } from '../../engine/EnvironmentSystem.js';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -30,6 +32,7 @@ export class OverworldScene implements Scene {
   private inputManager: InputManager;
   private camera: Camera;
   private collisionSystem: CollisionSystem;
+  private particleSystem: ParticleSystem;
   private player: Player;
   private chunkManager: ChunkManager;
   private uiManager: UIManager;
@@ -65,6 +68,7 @@ export class OverworldScene implements Scene {
     this.networkClient = networkClient;
     this.camera = new Camera();
     this.collisionSystem = new CollisionSystem();
+    this.particleSystem = new ParticleSystem();
     this.player = new Player(128 * 16, 128 * 16, inputManager, this.collisionSystem);
     this.chunkManager = new ChunkManager(this.collisionSystem);
     this.uiManager = new UIManager(renderer.getContext());
@@ -231,6 +235,22 @@ export class OverworldScene implements Scene {
   }
 
   update(dt: number): void {
+    envSystem.update(dt);
+    this.particleSystem.update(dt);
+    
+    // Spawn environmental particles (dust/leaves/snow)
+    if (Math.random() < 0.1) {
+      const pX = this.camera.x + Math.random() * GAME_WIDTH;
+      const pY = this.camera.y + Math.random() * GAME_HEIGHT;
+      if (this.lastBiomeName.toLowerCase().includes('forest')) {
+        this.particleSystem.emit(pX, pY, 1, ['#8bbf40', '#6aa32a'], 0.5, 20, 60, 'leaf'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#555555'], 2, 40, 100, 'bird');
+      } else if (this.lastBiomeName.toLowerCase().includes('mountain')) {
+        this.particleSystem.emit(pX, pY, 1, ['#aaaaaa', '#cccccc'], 0.8, 10, 40, 'dust'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#ffffff', '#eeeeee'], 2, 40, 100, 'bird');
+      } else if (this.lastBiomeName.toLowerCase().includes('city')) {
+        this.particleSystem.emit(pX, pY, 1, ['#888888', '#555555'], 0.2, 5, 80, 'dust'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#111111'], 2, 40, 100, 'bird');
+      }
+    }
+
     // Toggle debug mode with F3
     if (this.inputManager.justPressed('F3')) {
       this.debugMode = !this.debugMode;
@@ -393,20 +413,20 @@ export class OverworldScene implements Scene {
                           npc.sprite === 'craftsman' ? '#8b4513' :
                           npc.sprite === 'guide' ? '#32cd32' : '#708090';
           ctx.fillRect(screenX + 3, screenY + 10, 10, 6); // pants
-          ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ffffff' : '#dddddd';
-          ctx.fillRect(screenX + 3, screenY + 4, 10, 6); // shirt
+          let breathOffset = Math.sin(envSystem.time * 0.003 + npc.position.x * 0.1) > 0.5 ? 1 : 0; const upperY = screenY + breathOffset; ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ffffff' : '#dddddd';
+          ctx.fillRect(screenX + 3, upperY + 4, 10, 6); // shirt
           // head
           ctx.fillStyle = '#ffccaa'; // skin
-          ctx.fillRect(screenX + 4, screenY - 2, 8, 6);
+          ctx.fillRect(screenX + 4, upperY - 2, 8, 6);
           // hair/hat
           ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ff69b4' : '#555555';
-          ctx.fillRect(screenX + 3, screenY - 4, 10, 3);
+          ctx.fillRect(screenX + 3, upperY - 4, 10, 3);
           if (npc.direction === 'left') {
-              ctx.fillRect(screenX + 1, screenY - 2, 4, 2);
+              ctx.fillRect(screenX + 1, upperY - 2, 4, 2);
           } else if (npc.direction === 'right') {
-              ctx.fillRect(screenX + 11, screenY - 2, 4, 2);
+              ctx.fillRect(screenX + 11, upperY - 2, 4, 2);
           } else if (npc.direction === 'down') {
-              ctx.fillRect(screenX + 3, screenY - 2, 10, 2);
+              ctx.fillRect(screenX + 3, upperY - 2, 10, 2);
           }
 
           // eyes
@@ -416,25 +436,25 @@ export class OverworldScene implements Scene {
             case 'up':
               break;
             case 'down':
-              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
               break;
             case 'left':
-              ctx.fillRect(screenX + 4, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 4, upperY, eyeSize, eyeSize);
               break;
             case 'right':
-              ctx.fillRect(screenX + 10, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 10, upperY, eyeSize, eyeSize);
               break;
             default:
-              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
               break;
           }
 
           ctx.fillStyle = '#ffffff';
           ctx.font = '6px monospace';
           ctx.textAlign = 'center';
-          ctx.fillText(npc.name, screenX + 8, screenY - 6);
+          ctx.fillText(npc.name, screenX + 8, upperY - 6);
         },
       });
     }
@@ -456,20 +476,20 @@ export class OverworldScene implements Scene {
           // Draw other player body
           ctx.fillStyle = '#9e1e1e'; // pants
           ctx.fillRect(screenX + 3, screenY + 10, 10, 6);
-          ctx.fillStyle = '#e83a3a'; // shirt
-          ctx.fillRect(screenX + 3, screenY + 4, 10, 6);
+          let breathOffset = Math.sin(envSystem.time * 0.003 + op.position.x * 0.1) > 0.5 ? 1 : 0; const upperY = screenY + breathOffset; ctx.fillStyle = '#e83a3a';
+          ctx.fillRect(screenX + 3, upperY + 4, 10, 6);
           // head
           ctx.fillStyle = '#ffccaa'; // skin
-          ctx.fillRect(screenX + 4, screenY - 2, 8, 6);
+          ctx.fillRect(screenX + 4, upperY - 2, 8, 6);
           // hair/hat
           ctx.fillStyle = '#222222'; // hat
-          ctx.fillRect(screenX + 3, screenY - 4, 10, 3);
+          ctx.fillRect(screenX + 3, upperY - 4, 10, 3);
           if (op.direction === 'left' || op.direction === 'down-left' || op.direction === 'up-left') {
-              ctx.fillRect(screenX + 1, screenY - 2, 4, 2);
+              ctx.fillRect(screenX + 1, upperY - 2, 4, 2);
           } else if (op.direction === 'right' || op.direction === 'down-right' || op.direction === 'up-right') {
-              ctx.fillRect(screenX + 11, screenY - 2, 4, 2);
+              ctx.fillRect(screenX + 11, upperY - 2, 4, 2);
           } else if (op.direction === 'down') {
-              ctx.fillRect(screenX + 3, screenY - 2, 10, 2);
+              ctx.fillRect(screenX + 3, upperY - 2, 10, 2);
           }
 
           // eyes
@@ -479,29 +499,29 @@ export class OverworldScene implements Scene {
             case 'up':
               break;
             case 'down':
-              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
               break;
             case 'left':
             case 'down-left':
             case 'up-left':
-              ctx.fillRect(screenX + 4, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 4, upperY, eyeSize, eyeSize);
               break;
             case 'right':
             case 'down-right':
             case 'up-right':
-              ctx.fillRect(screenX + 10, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 10, upperY, eyeSize, eyeSize);
               break;
             default:
-              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
               break;
           }
 
           ctx.fillStyle = '#ffffff';
           ctx.font = '6px monospace';
           ctx.textAlign = 'center';
-          ctx.fillText(op.username, screenX + 8, screenY - 6);
+          ctx.fillText(op.username, screenX + 8, upperY - 6);
         },
       });
     }
@@ -513,6 +533,9 @@ export class OverworldScene implements Scene {
 
     drawables.sort((a, b) => a.sortY - b.sortY);
     for (const d of drawables) d.draw();
+
+    // Render environmental particles over everything
+    this.particleSystem.render(ctx, offsetX, offsetY);
 
     // Dialogue Overlay UI
     if (this.isDialogueActive && this.activeDialogueLines.length > 0) {

@@ -8,6 +8,8 @@ import {
 import { InputManager } from '../../engine/InputManager.js';
 import { CollisionSystem } from '../../engine/Collision.js';
 
+import { envSystem } from '../../engine/EnvironmentSystem.js';
+
 export class Player {
   x: number;
   y: number;
@@ -136,20 +138,20 @@ export class Player {
     // Draw player body
     ctx.fillStyle = '#1e5b9e'; // pants
     ctx.fillRect(screenX + 3, screenY + 10, 10, 6);
-    ctx.fillStyle = '#3a8be8'; // shirt
-    ctx.fillRect(screenX + 3, screenY + 4, 10, 6);
+    let breathOffset = (!this.moving && Math.sin(envSystem.time * 0.003 + this.x * 0.1) > 0.5) ? 1 : 0; const upperY = screenY + breathOffset; ctx.fillStyle = '#3a8be8';
+    ctx.fillRect(screenX + 3, upperY + 4, 10, 6);
     // head
     ctx.fillStyle = '#ffccaa'; // skin
-    ctx.fillRect(screenX + 4, screenY - 2, 8, 6);
+    ctx.fillRect(screenX + 4, upperY - 2, 8, 6);
     // hair/hat
     ctx.fillStyle = '#cc2222'; // hat
-    ctx.fillRect(screenX + 3, screenY - 4, 10, 3);
+    ctx.fillRect(screenX + 3, upperY - 4, 10, 3);
     if (this.direction === 'left' || this.direction === 'down-left' || this.direction === 'up-left') {
-        ctx.fillRect(screenX + 1, screenY - 2, 4, 2); // brim left
+        ctx.fillRect(screenX + 1, upperY - 2, 4, 2); // brim left
     } else if (this.direction === 'right' || this.direction === 'down-right' || this.direction === 'up-right') {
-        ctx.fillRect(screenX + 11, screenY - 2, 4, 2); // brim right
+        ctx.fillRect(screenX + 11, upperY - 2, 4, 2); // brim right
     } else if (this.direction === 'down') {
-        ctx.fillRect(screenX + 3, screenY - 2, 10, 2); // brim forward
+        ctx.fillRect(screenX + 3, upperY - 2, 10, 2); // brim forward
     }
 
     // Draw direction indicator (eyes)
@@ -160,18 +162,18 @@ export class Player {
         // no eyes facing away
         break;
       case 'down':
-        ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
-        ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+        ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
+        ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
         break;
       case 'left':
       case 'down-left':
       case 'up-left':
-        ctx.fillRect(screenX + 4, screenY, eyeSize, eyeSize);
+        ctx.fillRect(screenX + 4, upperY, eyeSize, eyeSize);
         break;
       case 'right':
       case 'down-right':
       case 'up-right':
-        ctx.fillRect(screenX + 10, screenY, eyeSize, eyeSize);
+        ctx.fillRect(screenX + 10, upperY, eyeSize, eyeSize);
         break;
     }
   }

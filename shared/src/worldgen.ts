@@ -334,9 +334,23 @@ export function rawTerrainTile(gx: number, gy: number, seed: number, mapId: stri
     return TILE_GRASS;
   }
 
-  // thin winding dirt trails through open terrain
+  // thin winding dirt trails through open terrain, only near towns
   const pathNoise = fbm2D(gx, gy, seed + 2000, 2, 0.12);
-  if (Math.abs(pathNoise - 0.5) < PATH_NOISE_BAND) return TILE_PATH;
+  if (Math.abs(pathNoise - 0.5) < PATH_NOISE_BAND) {
+    const cx = Math.floor(gx / CHUNK_SIZE);
+    const cy = Math.floor(gy / CHUNK_SIZE);
+    let nearTown = false;
+    for (let dcx = -1; dcx <= 1; dcx++) {
+      for (let dcy = -1; dcy <= 1; dcy++) {
+        if (isTownChunk(cx + dcx, cy + dcy, seed)) {
+          nearTown = true;
+          break;
+        }
+      }
+      if (nearTown) break;
+    }
+    if (nearTown) return TILE_PATH;
+  }
 
   // Tall grass clusters in plains
   const g = hash2D(gx, gy, seed + 4000);
@@ -389,12 +403,23 @@ function stampTown(tiles: number[][]): void {
     }
   }
 
-  // Stamp the house walls and floors
+  // Stamp the house walls (top, bottom, sides) and floors
+  // Top walls (roof/depth)
   for (let x = 4; x <= 11; x++) {
     tiles[4][x] = TILE_BUILDING_WALL;
     tiles[5][x] = TILE_BUILDING_WALL;
-    for (let y = 6; y <= 10; y++) {
-      tiles[y][x] = TILE_BUILDING_FLOOR;
+  }
+
+  // Side walls and bottom wall
+  for (let y = 6; y <= 10; y++) {
+    for (let x = 4; x <= 11; x++) {
+      if (y === 10) {
+        tiles[y][x] = TILE_BUILDING_WALL; // Bottom wall
+      } else if (x === 4 || x === 11) {
+        tiles[y][x] = TILE_BUILDING_WALL; // Left/Right side wall
+      } else {
+        tiles[y][x] = TILE_BUILDING_FLOOR; // Inside floor
+      }
     }
   }
 
