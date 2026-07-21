@@ -6,6 +6,9 @@ import {
   generateChunkTiles as generateChunkTilesShared,
   isWalkableTileId,
   getBiomeAt,
+  HeightGenerator,
+  DecorationGenerator,
+  DecorationType,
 } from 'poke-ter-shared';
 import { CollisionSystem, Collider } from '../../engine/Collision.js';
 import { envSystem } from '../../engine/EnvironmentSystem.js';
@@ -340,37 +343,23 @@ export class ChunkManager {
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
         break;
-      case 1: // Grass
+      case 1: { // Grass
         ctx.fillStyle = biome.grassColor;
         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
         
         // Shadow from left adjacent walls
         if (this.getTile((gx - 1) * TILE_SIZE, gy * TILE_SIZE) === 7) {
-           ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+           ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
            ctx.fillRect(x, y, 4, TILE_SIZE);
         }
-        if (h > 0.8) {
-          const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.003, 1.0);
-          ctx.fillStyle = biome.tallGrassColor;
-          ctx.fillRect(x + 4 + sway, y + 8, 2, 4);
-          ctx.fillRect(x + 10 + sway, y + 4, 2, 3);
-        } else if (h > 0.75) {
-          const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.002, 0.8);
-          ctx.fillStyle = biome.id === 'forest' ? '#9933ff' : '#ff99aa';
-          ctx.fillRect(x + 6 + sway, y + 6, 2, 2);
-          ctx.fillStyle = biome.tallGrassColor;
-          ctx.fillRect(x + 6 + sway * 0.5, y + 8, 2, 2);
-        } else if (h < 0.05) {
-          ctx.fillStyle = '#7a7a7a';
-          ctx.fillRect(x + 8, y + 10, 3, 2);
-          ctx.fillStyle = '#555555';
-          ctx.fillRect(x + 8, y + 11, 3, 1);
-        } else if (h < 0.1) {
-          ctx.fillStyle = '#8b5a2b';
-          ctx.fillRect(x + 3, y + 3, 2, 1);
-          ctx.fillRect(x + 11, y + 12, 1, 1);
+
+        // Render the deterministic decoration layer on top of the grass tile!
+        const decType = DecorationGenerator.getDecoration(gx, gy, this.currentSeed, tileId, biome.id);
+        if (decType !== DecorationType.NONE) {
+          this.renderDecoration(ctx, decType, x, y, gx, gy);
         }
         break;
+      }
       case 2: // Path
         ctx.fillStyle = biome.grassColor;
         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
@@ -394,25 +383,51 @@ export class ChunkManager {
         }
         break;
       case 3: { // Water
-        ctx.fillStyle = biome.id === 'lake' ? '#2e5b82' : '#3b6fa0';
+        // Query elevation on the fly to support multiple visual depths deterministically
+        const elevation = this.currentSeed === 0 ? 0.20 : HeightGenerator.getElevation(gx, gy, this.currentSeed);
+
+        // Multiple Water Depths Coloring
+        if (elevation < 0.16) {
+          // Deep Water: Dark oceanic navy
+          ctx.fillStyle = '#1b334a';
+        } else if (elevation < 0.26) {
+          // Medium Water: Royal sapphire blue
+          ctx.fillStyle = '#26486b';
+        } else {
+          // Shallow Water / Shore Water: Light cerulean
+          ctx.fillStyle = '#325d8a';
+        }
         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+        // Dynamic wave crests and foam
         const waveOffset = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.002, 2.0);
         const waveOffset2 = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.0025, 1.5, Math.PI);
-        ctx.fillStyle = biome.id === 'lake' ? '#3d729e' : '#4b7fb0';
-        ctx.fillRect(x + 2 + waveOffset, y + 4, 8, 2);
-        ctx.fillRect(x + 8 + waveOffset2, y + 10, 6, 2);
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; // Wave specular
+        ctx.fillRect(x + 2 + waveOffset, y + 4, 8, 1);
+        ctx.fillRect(x + 6 + waveOffset2, y + 11, 6, 1);
+
+        // Water shoreline foam overlay
         const isUpWater = this.getTile(gx * TILE_SIZE, (gy - 1) * TILE_SIZE) === 3;
         if (!isUpWater) {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-          const shoreSway = Math.max(0, envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.0015, 2.0));
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'; // Foam line
+          const shoreSway = Math.max(0, envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.0018, 2.0));
           ctx.fillRect(x, y, TILE_SIZE, 2 + shoreSway);
         }
-        if (h < 0.1 && biome.id === 'lake') {
-          ctx.fillStyle = '#4da64d'; // lilypad
+
+        // Biological details (lilypads, lotus flowers)
+        if (h < 0.12) {
+          // Lotus Flower & Lilypad
           const lilypadSway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.001, 1.0);
-          ctx.fillRect(x + 4 + lilypadSway, y + 8, 6, 4);
-          ctx.fillStyle = '#3a8a3a';
-          ctx.fillRect(x + 6 + lilypadSway, y + 10, 2, 2);
+          ctx.fillStyle = '#27ae60'; // Lilypad base
+          ctx.beginPath();
+          ctx.arc(x + 8 + lilypadSway, y + 8, 4, 0, Math.PI * 1.7);
+          ctx.fill();
+          
+          if (h < 0.04) {
+            ctx.fillStyle = '#ff99cc'; // Lotus Pink Blossom
+            ctx.fillRect(x + 7 + lilypadSway, y + 6, 2, 2);
+          }
         }
         break;
       }
@@ -588,6 +603,94 @@ export class ChunkManager {
   /** Check if a tile ID is walkable */
   private isWalkableTile(tileId: number): boolean {
     return isWalkableTileId(tileId);
+  }
+
+  private renderDecoration(ctx: CanvasRenderingContext2D, decType: DecorationType, x: number, y: number, gx: number, gy: number): void {
+    const sway = envSystem.getSwayOffset(gx * TILE_SIZE, gy * TILE_SIZE, 0.002, 1.0);
+    const h = this.hash(gx, gy, this.currentSeed);
+
+    switch (decType) {
+      case DecorationType.FLOWER_RED: {
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(x + 5 + sway, y + 5, 6, 4);
+        ctx.fillStyle = '#f1c40f'; // flower center
+        ctx.fillRect(x + 7 + sway, y + 6, 2, 2);
+        ctx.fillStyle = '#2d5a1e'; // stem
+        ctx.fillRect(x + 7 + sway * 0.5, y + 9, 2, 4);
+        break;
+      }
+      case DecorationType.FLOWER_YELLOW: {
+        ctx.fillStyle = '#f1c40f';
+        ctx.fillRect(x + 5 + sway, y + 6, 5, 3);
+        ctx.fillStyle = '#ffffff'; // center
+        ctx.fillRect(x + 7 + sway, y + 7, 1, 1);
+        ctx.fillStyle = '#2d5a1e'; // stem
+        ctx.fillRect(x + 7 + sway * 0.5, y + 9, 1, 3);
+        break;
+      }
+      case DecorationType.FLOWER_PURPLE: {
+        ctx.fillStyle = '#a84dd3';
+        ctx.fillRect(x + 5 + sway, y + 5, 6, 4);
+        ctx.fillStyle = '#ffb3ff'; // center
+        ctx.fillRect(x + 7 + sway, y + 4, 2, 2);
+        ctx.fillStyle = '#2d5a1e'; // stem
+        ctx.fillRect(x + 7 + sway * 0.5, y + 9, 2, 4);
+        break;
+      }
+      case DecorationType.MUSHROOM: {
+        ctx.fillStyle = '#e84c3d'; // Cap
+        ctx.fillRect(x + 5, y + 6, 6, 3);
+        ctx.fillStyle = '#ffffff'; // Spots & Stem
+        ctx.fillRect(x + 7, y + 9, 2, 3);
+        ctx.fillRect(x + 6, y + 6, 1, 1);
+        ctx.fillRect(x + 9, y + 7, 1, 1);
+        break;
+      }
+      case DecorationType.FALLEN_LOG: {
+        ctx.fillStyle = '#5c4033';
+        ctx.fillRect(x + 3, y + 9, 10, 3);
+        ctx.fillStyle = '#8b5a2b'; // log rings
+        ctx.fillRect(x + 3, y + 9, 1, 3);
+        ctx.fillRect(x + 12, y + 9, 1, 3);
+        break;
+      }
+      case DecorationType.TREE_STUMP: {
+        ctx.fillStyle = '#5c4033';
+        ctx.fillRect(x + 4, y + 6, 8, 8);
+        ctx.fillStyle = '#8b5a2b'; // rings
+        ctx.fillRect(x + 5, y + 5, 6, 2);
+        ctx.fillStyle = '#3a2212'; // shading
+        ctx.fillRect(x + 4, y + 13, 8, 1);
+        break;
+      }
+      case DecorationType.PEBBLE: {
+        ctx.fillStyle = '#6c5b45';
+        ctx.fillRect(x + 5, y + 9, 6, 4);
+        ctx.fillStyle = '#8c7b65'; // highlights
+        ctx.fillRect(x + 6, y + 8, 4, 1);
+        ctx.fillStyle = '#4a3b25'; // shadow
+        ctx.fillRect(x + 5, y + 13, 6, 1);
+        break;
+      }
+      case DecorationType.BUSH: {
+        ctx.fillStyle = '#225511';
+        ctx.beginPath();
+        ctx.arc(x + 8 + sway, y + 8, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#114400';
+        ctx.beginPath();
+        ctx.arc(x + 5 + sway, y + 10, 4, 0, Math.PI * 2);
+        ctx.arc(x + 11 + sway, y + 10, 4, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case DecorationType.REEDS: {
+        ctx.fillStyle = '#7a9e60';
+        ctx.fillRect(x + 5 + sway, y + 4, 2, 9);
+        ctx.fillRect(x + 9 + sway, y + 5, 2, 8);
+        break;
+      }
+    }
   }
 
   /** Clear all chunks */
