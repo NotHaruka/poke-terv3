@@ -103,7 +103,6 @@ export class OverworldScene implements Scene {
     this.chunkManager.setSeed(res.seed);
     this.player.x = res.position.x;
     this.player.y = res.position.y;
-    this.player.direction = res.direction || 'down';
     this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
     
     // Reload other players for this map

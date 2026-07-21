@@ -55,6 +55,7 @@ export interface HelloPacket extends Packet {
   type: PacketType.Hello;
   username: string;
   version: string;
+  sessionId?: string;
 }
 
 export interface WelcomePacket extends Packet {

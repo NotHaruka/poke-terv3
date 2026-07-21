@@ -1,6 +1,8 @@
 {
   "name": "Poke-ter",
-  "description": "A local multiplayer game set in a pixelated world.",
+  "description": "An infinite-world, multiplayer, real-time procedural monster catching and roaming game built with TypeScript, HTML Canvas, and Node.js WebSockets.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

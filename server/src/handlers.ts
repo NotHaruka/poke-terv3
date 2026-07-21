@@ -33,6 +33,20 @@ export function handlePacket(gameState: GameState, client: ClientState, packet: 
 function handleHello(gameState: GameState, client: ClientState, packet: HelloPacket): void {
   client.username = packet.username;
 
+  if (packet.sessionId) {
+    const existingClient = gameState.getClient(packet.sessionId);
+    if (existingClient && existingClient.ws === null) {
+      console.log(`[+] ${existingClient.id} reconnected`);
+      existingClient.ws = client.ws;
+      if (existingClient.disconnectTimer) {
+        clearTimeout(existingClient.disconnectTimer);
+        existingClient.disconnectTimer = undefined;
+      }
+      gameState.removeClient(client.id, true);
+      client = existingClient;
+    }
+  }
+
   // Compile active players for the welcome list (only in the same map)
   const players = gameState.getClientsInMap(client.mapInstanceId)
     .filter(c => c.id !== client.id)
@@ -81,30 +95,25 @@ function handlePlayerInput(gameState: GameState, client: ClientState, packet: Pl
   // Update direction
   client.direction = packet.direction;
 
-  if (packet.position) {
-    // If the client sent its collision-resolved, frame-rate independent position, trust it!
-    client.position = packet.position;
-  } else {
-    // Calculate new position from input using correct exported speed values
-    const speed = packet.keys['ShiftLeft'] || packet.keys['ShiftRight'] ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
-    let dx = 0, dy = 0;
+  // Calculate new position from input using correct exported speed values
+  const speed = packet.keys['ShiftLeft'] || packet.keys['ShiftRight'] ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
+  let dx = 0, dy = 0;
 
-    if (packet.keys['ArrowUp'] || packet.keys['KeyW']) dy -= speed;
-    if (packet.keys['ArrowDown'] || packet.keys['KeyS']) dy += speed;
-    if (packet.keys['ArrowLeft'] || packet.keys['KeyA']) dx -= speed;
-    if (packet.keys['ArrowRight'] || packet.keys['KeyD']) dx += speed;
+  if (packet.keys['ArrowUp'] || packet.keys['KeyW']) dy -= speed;
+  if (packet.keys['ArrowDown'] || packet.keys['KeyS']) dy += speed;
+  if (packet.keys['ArrowLeft'] || packet.keys['KeyA']) dx -= speed;
+  if (packet.keys['ArrowRight'] || packet.keys['KeyD']) dx += speed;
 
-    // Normalize diagonal movement
-    if (dx !== 0 && dy !== 0) {
-      dx *= 0.7071;
-      dy *= 0.7071;
-    }
-
-    // Update position with boundaries (server authority)
-    const newX = Math.max(0, Math.min(4096, client.position.x + dx));
-    const newY = Math.max(0, Math.min(4096, client.position.y + dy));
-    client.position = { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 };
+  // Normalize diagonal movement
+  if (dx !== 0 && dy !== 0) {
+    dx *= 0.7071;
+    dy *= 0.7071;
   }
+
+  // Update position with boundaries (server authority)
+  const newX = Math.max(0, Math.min(4096, client.position.x + dx));
+  const newY = Math.max(0, Math.min(4096, client.position.y + dy));
+  client.position = { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 };
 
   // Broadcast the move to other players in the same map
   gameState.broadcastToMap(client.mapInstanceId, {

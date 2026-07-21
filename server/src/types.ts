@@ -8,7 +8,7 @@ export interface MapInstance {
 }
 
 export interface ClientState {
-  ws: WebSocket;
+  ws: WebSocket | null;
   id: string;
   username: string;
   position: { x: number; y: number };
@@ -16,4 +16,5 @@ export interface ClientState {
   inputSeq: number;
   lastInputSeq: number;
   mapInstanceId: string;
+  disconnectTimer?: NodeJS.Timeout;
 }

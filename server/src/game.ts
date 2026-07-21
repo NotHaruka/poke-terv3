@@ -77,9 +77,40 @@ export class GameState {
     return client;
   }
 
-  public removeClient(playerId: string): void {
+  public getClientByWs(ws: WebSocket): ClientState | undefined {
+    for (const client of this.clients.values()) {
+      if (client.ws === ws) {
+        return client;
+      }
+    }
+    return undefined;
+  }
+
+  public markClientDisconnected(playerId: string): void {
+    const client = this.clients.get(playerId);
+    if (!client) return;
+    
+    // Clear ws to allow reconnect
+    client.ws = null;
+    
+    // 15 seconds grace period
+    client.disconnectTimer = setTimeout(() => {
+      this.removeClient(playerId);
+      this.broadcastToMap(client.mapInstanceId, {
+        type: 11, // PacketType.PlayerLeave
+        playerId: client.id,
+        timestamp: Date.now(),
+      });
+      console.log(`[-] ${client.id} session expired`);
+    }, 15000);
+  }
+
+  public removeClient(playerId: string, temporary: boolean = false): void {
     const client = this.clients.get(playerId);
     if (client) {
+      if (client.disconnectTimer) {
+        clearTimeout(client.disconnectTimer);
+      }
       const map = this.maps.get(client.mapInstanceId);
       if (map) {
         map.players.delete(playerId);
@@ -108,7 +139,7 @@ export class GameState {
   }
 
   public send(client: ClientState, packet: AnyPacket): void {
-    if (client.ws.readyState === 1) { // WebSocket.OPEN
+    if (client.ws && client.ws.readyState === 1) { // WebSocket.OPEN
       client.ws.send(JSON.stringify(packet));
     }
   }
@@ -121,7 +152,7 @@ export class GameState {
     for (const id of map.players) {
       if (excludeId && id === excludeId) continue;
       const client = this.clients.get(id);
-      if (client && client.ws.readyState === 1) {
+      if (client && client.ws && client.ws.readyState === 1) {
         client.ws.send(data);
       }
     }
@@ -131,7 +162,7 @@ export class GameState {
     const data = JSON.stringify(packet);
     for (const [id, client] of this.clients) {
       if (excludeId && id === excludeId) continue;
-      if (client.ws.readyState === 1) { // WebSocket.OPEN
+      if (client.ws && client.ws.readyState === 1) { // WebSocket.OPEN
         client.ws.send(data);
       }
     }

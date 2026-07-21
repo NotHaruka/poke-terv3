@@ -28,30 +28,35 @@ async function startServer() {
   const gameState = new GameState();
 
   wss.on('connection', (ws: WebSocket) => {
-    const client = gameState.addClient(ws);
-    console.log(`[+] ${client.id} connected`);
+    // Initial assignment
+    gameState.addClient(ws);
+    console.log(`[+] New connection established`);
 
     ws.on('message', (data) => {
       try {
         const packet: AnyPacket = JSON.parse(data.toString());
-        handlePacket(gameState, client, packet);
+        const client = gameState.getClientByWs(ws);
+        if (client) {
+          handlePacket(gameState, client, packet);
+        }
       } catch (e) {
-        console.error(`[!] Invalid packet from ${client.id}:`, e);
+        console.error(`[!] Invalid packet:`, e);
       }
     });
 
     ws.on('close', () => {
-      gameState.removeClient(client.id);
-      gameState.broadcast({
-        type: PacketType.PlayerLeave,
-        playerId: client.id,
-        timestamp: Date.now(),
-      } as PlayerLeavePacket);
-      console.log(`[-] ${client.id} disconnected`);
+      const client = gameState.getClientByWs(ws);
+      if (client) {
+        gameState.markClientDisconnected(client.id);
+        console.log(`[-] ${client.id} connection closed (grace period started)`);
+      }
     });
 
     ws.on('error', () => {
-      gameState.removeClient(client.id);
+      const client = gameState.getClientByWs(ws);
+      if (client) {
+        gameState.markClientDisconnected(client.id);
+      }
     });
   });
 

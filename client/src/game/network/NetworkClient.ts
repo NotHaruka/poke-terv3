@@ -56,7 +56,6 @@ export class NetworkClient {
 
       this.ws.onclose = () => {
         this.connected = false;
-        this.playerId = '';
         this.scheduleReconnect();
       };
 
@@ -149,10 +148,16 @@ export class NetworkClient {
   }
 
   private sendHello(): void {
+    let savedSessionId = this.playerId;
+    if (!savedSessionId) {
+      try { savedSessionId = sessionStorage.getItem('poke_ter_session_id') || ''; } catch (e) {}
+    }
+    
     const packet: HelloPacket = {
       type: PacketType.Hello,
       username: this.username,
       version: this.version,
+      sessionId: savedSessionId || undefined,
       timestamp: Date.now(),
     };
     this.send(packet);
@@ -171,6 +176,7 @@ export class NetworkClient {
       case PacketType.Welcome:
         const welcome = packet as WelcomePacket;
         this.playerId = welcome.playerId;
+        try { sessionStorage.setItem('poke_ter_session_id', this.playerId); } catch (e) {}
         break;
       case PacketType.Pong:
         const pong = packet as PongPacket;
