@@ -75,8 +75,16 @@ export class OverworldScene implements Scene {
       this.networkClient.on(PacketType.PlayerJoin, this.onPlayerJoin);
       this.networkClient.on(PacketType.PlayerLeave, this.onPlayerLeave);
       this.networkClient.on(PacketType.PlayerMove, this.onPlayerMove);
+      this.networkClient.on(PacketType.PlayerPos, this.onPlayerPos);
     }
   }
+
+  private onPlayerPos = (packet: any): void => {
+    const pos = packet as import('poke-ter-shared').PlayerPosPacket;
+    this.player.x = pos.position.x;
+    this.player.y = pos.position.y;
+    this.player.direction = pos.direction;
+  };
 
   private onWelcome = (packet: any): void => {
     const welcome = packet as WelcomePacket;

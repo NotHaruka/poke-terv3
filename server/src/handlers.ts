@@ -110,10 +110,38 @@ function handlePlayerInput(gameState: GameState, client: ClientState, packet: Pl
     dy *= 0.7071;
   }
 
-  // Update position with boundaries (server authority)
+  // Calculate theoretical new position with boundaries
   const newX = Math.max(0, Math.min(4096, client.position.x + dx));
   const newY = Math.max(0, Math.min(4096, client.position.y + dy));
-  client.position = { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 };
+  
+  if (packet.position) {
+    const pX = packet.position.x;
+    const pY = packet.position.y;
+    
+    // Check distance between server's expected pos and client's requested pos
+    const diffX = pX - newX;
+    const diffY = pY - newY;
+    const distSq = diffX * diffX + diffY * diffY;
+    
+    // Allow up to ~80 pixels of divergence (squared = 6400) to account for frame-rate physics & slight lag
+    if (distSq < 6400) {
+      // Trust client's resolved collision position
+      client.position = { x: Math.round(pX * 10) / 10, y: Math.round(pY * 10) / 10 };
+    } else {
+      // Reject client's position, fallback to server's calculation and snap them back
+      client.position = { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 };
+      gameState.send(client, {
+        type: PacketType.PlayerPos,
+        position: client.position,
+        direction: client.direction,
+        inputSeq: packet.inputSeq,
+        timestamp: Date.now(),
+      } as PlayerPosPacket);
+    }
+  } else {
+    // Legacy fallback (no client position sent)
+    client.position = { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 };
+  }
 
   // Broadcast the move to other players in the same map
   gameState.broadcastToMap(client.mapInstanceId, {
