@@ -240,8 +240,8 @@ export class OverworldScene implements Scene {
     
     // Spawn environmental particles (dust/leaves/snow)
     if (Math.random() < 0.1) {
-      const pX = this.camera.x + Math.random() * GAME_WIDTH;
-      const pY = this.camera.y + Math.random() * GAME_HEIGHT;
+      const pX = this.camera.getX() + Math.random() * GAME_WIDTH;
+      const pY = this.camera.getY() + Math.random() * GAME_HEIGHT;
       if (this.lastBiomeName.toLowerCase().includes('forest')) {
         this.particleSystem.emit(pX, pY, 1, ['#8bbf40', '#6aa32a'], 0.5, 20, 60, 'leaf'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#555555'], 2, 40, 100, 'bird');
       } else if (this.lastBiomeName.toLowerCase().includes('mountain')) {
