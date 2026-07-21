@@ -19,7 +19,7 @@
  * multiplayer, and for the offline client fallback to match the server.
  */
 
-import { WORLD_SEED, TOWN_CHUNK_SPACING, CHUNK_SIZE } from './constants.js';
+import { WORLD_SEED, TOWN_CHUNK_SPACING, CHUNK_SIZE, TILE_SIZE } from './constants.js';
 import { NPCDefinition, Vec2, Direction } from './types.js';
 
 // ===== Tile IDs (shared meaning across client + server renderers) =====
@@ -545,6 +545,22 @@ export class RoadWaypoints {
 }
 
 export class RoadGenerator {
+  private static townListCache: Record<number, { cx: number, cy: number }[]> = {};
+
+  private static getTownChunksForSeed(seed: number): { cx: number, cy: number }[] {
+    if (this.townListCache[seed]) return this.townListCache[seed];
+    const towns: { cx: number, cy: number }[] = [];
+    for (let cx = 0; cx < 16; cx++) {
+      for (let cy = 0; cy < 16; cy++) {
+        if (isTownChunk(cx, cy, seed)) {
+          towns.push({ cx, cy });
+        }
+      }
+    }
+    this.townListCache[seed] = towns;
+    return towns;
+  }
+
   static getTile(gx: number, gy: number, seed: number, mapId: string = 'city', elevation: number = 0.5): number | null {
     if (mapId === 'city') return null;
 
@@ -577,27 +593,26 @@ export class RoadGenerator {
       }
     }
 
-    // Connect to towns
-    for (let cx = 0; cx < 16; cx++) {
-      for (let cy = 0; cy < 16; cy++) {
-        if (isTownChunk(cx, cy, seed)) {
-          const tx = cx * 16 + 7;
-          const ty = cy * 16 + 7;
+    // Connect to towns using cached town positions (prevents massive un-cached loop overhead)
+    if (seed !== 0) {
+      const towns = this.getTownChunksForSeed(seed);
+      for (const town of towns) {
+        const tx = town.cx * 16 + 7;
+        const ty = town.cy * 16 + 7;
 
-          const t0Pts = RoadWaypoints.getWaypoints(p0, { x: tx, y: ty }, seed, `${mapId}_town_0_${cx}_${cy}`);
-          for (let i = 0; i < t0Pts.length - 1; i++) {
-            const d = distanceToCurve(gx, gy, t0Pts[i].x, t0Pts[i].y, t0Pts[i+1].x, t0Pts[i+1].y, seed + i + 10);
-            if (d < minDist) {
-              minDist = d;
-            }
+        const t0Pts = RoadWaypoints.getWaypoints(p0, { x: tx, y: ty }, seed, `${mapId}_town_0_${town.cx}_${town.cy}`);
+        for (let i = 0; i < t0Pts.length - 1; i++) {
+          const d = distanceToCurve(gx, gy, t0Pts[i].x, t0Pts[i].y, t0Pts[i+1].x, t0Pts[i+1].y, seed + i + 10);
+          if (d < minDist) {
+            minDist = d;
           }
+        }
 
-          const t1Pts = RoadWaypoints.getWaypoints({ x: tx, y: ty }, p1, seed, `${mapId}_town_1_${cx}_${cy}`);
-          for (let i = 0; i < t1Pts.length - 1; i++) {
-            const d = distanceToCurve(gx, gy, t1Pts[i].x, t1Pts[i].y, t1Pts[i+1].x, t1Pts[i+1].y, seed + i + 20);
-            if (d < minDist) {
-              minDist = d;
-            }
+        const t1Pts = RoadWaypoints.getWaypoints({ x: tx, y: ty }, p1, seed, `${mapId}_town_1_${town.cx}_${town.cy}`);
+        for (let i = 0; i < t1Pts.length - 1; i++) {
+          const d = distanceToCurve(gx, gy, t1Pts[i].x, t1Pts[i].y, t1Pts[i+1].x, t1Pts[i+1].y, seed + i + 20);
+          if (d < minDist) {
+            minDist = d;
           }
         }
       }
@@ -1455,12 +1470,19 @@ export function isWalkableTileId(tileId: number): boolean {
   );
 }
 
+// Global town chunk cache to prevent heavy chunk re-generation loops during spatial queries
+const townChunkCache: Record<string, number[][]> = {};
+
 export function getGlobalTile(gx: number, gy: number, seed: number, mapId: string = 'city'): number {
   const cx = Math.floor(gx / CHUNK_SIZE);
   const cy = Math.floor(gy / CHUNK_SIZE);
   
   if (seed !== 0 && isTownChunk(cx, cy, seed)) {
-    const chunk = generateChunkTiles(cx, cy, seed, mapId);
+    const cacheKey = `${cx},${cy},${seed},${mapId}`;
+    if (!townChunkCache[cacheKey]) {
+      townChunkCache[cacheKey] = generateChunkTiles(cx, cy, seed, mapId);
+    }
+    const chunk = townChunkCache[cacheKey];
     let lx = gx - cx * CHUNK_SIZE;
     let ly = gy - cy * CHUNK_SIZE;
     if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE) {
@@ -1472,8 +1494,8 @@ export function getGlobalTile(gx: number, gy: number, seed: number, mapId: strin
 }
 
 export function findSafeSpawn(seed: number, startPixelX: number, startPixelY: number, mapId: string = 'city'): { x: number, y: number } {
-  let gx = Math.floor(startPixelX / 16); // Assuming TILE_SIZE = 16
-  let gy = Math.floor(startPixelY / 16);
+  let gx = Math.floor(startPixelX / TILE_SIZE);
+  let gy = Math.floor(startPixelY / TILE_SIZE);
   
   const maxRadius = 50; 
   
@@ -1489,8 +1511,8 @@ export function findSafeSpawn(seed: number, startPixelX: number, startPixelY: nu
           const tile = getGlobalTile(testGx, testGy, seed, mapId);
           if (isWalkableTileId(tile)) {
             return {
-              x: testGx * 16,
-              y: testGy * 16
+              x: testGx * TILE_SIZE,
+              y: testGy * TILE_SIZE
             };
           }
         }
