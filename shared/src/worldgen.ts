@@ -199,8 +199,8 @@ export class BiomeGenerator {
           if (Math.abs(dx) === r || Math.abs(dy) === r) {
             const nx = gx + dx;
             const ny = gy + dy;
-            const el = HeightGenerator.getElevation(nx, ny, seed, mapId);
-            if (el < 0.33 || RiverGenerator.isRiverTile(nx, ny, seed, mapId) || PondGenerator.isPondTile(nx, ny, seed)) {
+            const el = HeightGenerator.getBaseElevation(nx, ny, seed, mapId);
+            if (el < 0.33 || RiverGenerator.isRawRiverTile(nx, ny, seed, mapId) || PondGenerator.isRawPondTile(nx, ny, seed)) {
               return 5 - r;
             }
           }
@@ -211,8 +211,8 @@ export class BiomeGenerator {
   }
 
   static isBeachTile(gx: number, gy: number, seed: number, mapId: string = 'route_1'): boolean {
-    const el = HeightGenerator.getElevation(gx, gy, seed, mapId);
-    if (el < 0.33 || RiverGenerator.isRiverTile(gx, gy, seed, mapId) || PondGenerator.isPondTile(gx, gy, seed)) {
+    const el = HeightGenerator.getBaseElevation(gx, gy, seed, mapId);
+    if (el < 0.33 || RiverGenerator.isRawRiverTile(gx, gy, seed, mapId) || PondGenerator.isRawPondTile(gx, gy, seed)) {
       return false;
     }
 
@@ -459,8 +459,8 @@ export class CliffGenerator {
     const cy = Math.floor(gy / CHUNK_SIZE);
     if (seed !== 0 && isTownChunk(cx, cy, seed)) return null;
 
-    if (RiverGenerator.isRiverTile(gx, gy, seed, mapId) || 
-        PondGenerator.isPondTile(gx, gy, seed) || 
+    if (RiverGenerator.isRawRiverTile(gx, gy, seed, mapId) || 
+        PondGenerator.isRawPondTile(gx, gy, seed) || 
         LakeGenerator.isLakeTile(elevation, gx, gy, seed)) {
       return null;
     }
@@ -470,8 +470,8 @@ export class CliffGenerator {
       return TILE_MOUNTAIN;
     }
 
-    const westElevation = HeightGenerator.getElevation(gx - 1, gy, seed, mapId);
-    const eastElevation = HeightGenerator.getElevation(gx + 1, gy, seed, mapId);
+    const westElevation = HeightGenerator.getBaseElevation(gx - 1, gy, seed, mapId);
+    const eastElevation = HeightGenerator.getBaseElevation(gx + 1, gy, seed, mapId);
     if (elevation - westElevation >= 0.08 || elevation - eastElevation >= 0.08) {
       const cliffNoise = fbm2D(gx * 0.1, gy * 0.1, seed + 999, 2, 0.1);
       if (cliffNoise > 0.45) {
@@ -514,8 +514,8 @@ export class RoadWaypoints {
 
         if (cx < 10 || cx > 245 || cy < 10 || cy > 245) continue;
 
-        const el = HeightGenerator.getElevation(cx, cy, seed, mapId);
-        const isRiver = RiverGenerator.isRiverTile(cx, cy, seed, mapId);
+        const el = HeightGenerator.getBaseElevation(cx, cy, seed, mapId);
+        const isRiver = RiverGenerator.isRawRiverTile(cx, cy, seed, mapId);
 
         let score = 0;
         if (isRiver) score -= 300;
@@ -558,8 +558,24 @@ export class RoadGenerator {
     return towns;
   }
 
+  // Pre-computed road distance cache to avoid O(n) distance checks per tile
+  private static roadDistanceCache: Record<string, number> = {};
+
   static getTile(gx: number, gy: number, seed: number, mapId: string = 'city', elevation: number = 0.5): number | null {
     if (mapId === 'city') return null;
+
+    // Check cache first
+    const cacheKey = `${seed}_${mapId}_${gx}_${gy}`;
+    if (this.roadDistanceCache[cacheKey] !== undefined) {
+      const minDist = this.roadDistanceCache[cacheKey];
+      if (minDist < 1.5) {
+        if (elevation < 0.33 || RiverGenerator.isRawRiverTile(gx, gy, seed, mapId) || PondGenerator.isRawPondTile(gx, gy, seed)) {
+          return TILE_BUILDING_FLOOR;
+        }
+        return TILE_PATH;
+      }
+      return null;
+    }
 
     let p0 = { x: 127, y: 244 };
     let p1 = { x: 127, y: 128 };
@@ -614,8 +630,10 @@ export class RoadGenerator {
       }
     }
 
+    this.roadDistanceCache[cacheKey] = minDist;
+
     if (minDist < 1.5) {
-      if (elevation < 0.33 || RiverGenerator.isRiverTile(gx, gy, seed, mapId) || PondGenerator.isPondTile(gx, gy, seed)) {
+      if (elevation < 0.33 || RiverGenerator.isRawRiverTile(gx, gy, seed, mapId) || PondGenerator.isRawPondTile(gx, gy, seed)) {
         return TILE_BUILDING_FLOOR;
       }
       return TILE_PATH;
@@ -625,14 +643,14 @@ export class RoadGenerator {
   }
 
   static isNearRoad(gx: number, gy: number, seed: number, mapId: string): boolean {
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dy = -2; dy <= 2; dy++) {
-        if (RoadGenerator.getTile(gx + dx, gy + dy, seed, mapId) !== null) {
-          return true;
-        }
-      }
+    // Use cached distance check instead of calling getTile 25 times
+    const cacheKey = `${seed}_${mapId}_${gx}_${gy}`;
+    if (RoadGenerator.roadDistanceCache[cacheKey] !== undefined) {
+      return RoadGenerator.roadDistanceCache[cacheKey] < 1.5;
     }
-    return false;
+    // If not in cache, compute it
+    const result = RoadGenerator.getTile(gx, gy, seed, mapId) !== null;
+    return result;
   }
 }
 
@@ -706,6 +724,7 @@ export class LandmarkGenerator {
 
 export class VegetationGenerator {
   static getTile(gx: number, gy: number, seed: number, moisture: number, biomeId: string, mapId: string = 'route_1'): number | null {
+    // Use cached road check via public method
     if (RoadGenerator.isNearRoad(gx, gy, seed, mapId)) return null;
 
     const forestNoise = fbm2D(gx, gy, seed + 1200, 3, 0.04);
@@ -807,8 +826,12 @@ export interface BiomeInfo {
 }
 
 export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string = 'route_1'): BiomeInfo {
+  // Fast cache lookup
+  const cacheKey = `${seed}_${mapId}_${gx}_${gy}`;
+  if (biomeCache[cacheKey]) return biomeCache[cacheKey];
+
   if (seed === 0) {
-    return {
+    const biome: BiomeInfo = {
       id: 'city',
       name: 'Permanent City',
       bgColor: '#e2d6b5',
@@ -816,10 +839,12 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
       treeColor: '#1d4a0e',
       tallGrassColor: '#4d8a3e',
     };
+    biomeCache[cacheKey] = biome;
+    return biome;
   }
 
   if (gx <= 3 || gx >= 252 || gy <= 3 || gy >= 252) {
-    return {
+    const biome: BiomeInfo = {
       id: 'forest',
       name: 'Ancient Grove',
       bgColor: '#3a7c2f',
@@ -827,12 +852,14 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
       treeColor: '#1a4a0e',
       tallGrassColor: '#2d5a1e',
     };
+    biomeCache[cacheKey] = biome;
+    return biome;
   }
 
   const landmark = LandmarkGenerator.getTile(gx, gy, seed, mapId);
   if (landmark !== null) {
     if (landmark === TILE_WATER) {
-      return {
+      const biome: BiomeInfo = {
         id: 'lake',
         name: 'Cerulean Lake',
         bgColor: '#3b6fa0',
@@ -840,9 +867,11 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
         treeColor: '#1d4a0e',
         tallGrassColor: '#4d8a3e',
       };
+      biomeCache[cacheKey] = biome;
+      return biome;
     }
     if (landmark === TILE_MOUNTAIN) {
-      return {
+      const biome: BiomeInfo = {
         id: 'mountain',
         name: 'Craggy Highlands',
         bgColor: '#5a4a35',
@@ -850,15 +879,17 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
         treeColor: '#2d4d2d',
         tallGrassColor: '#4a7a4a',
       };
+      biomeCache[cacheKey] = biome;
+      return biome;
     }
   }
 
-  const isRiver = RiverGenerator.isRiverTile(gx, gy, seed, mapId);
-  const isPond = PondGenerator.isPondTile(gx, gy, seed);
-  const elevation = HeightGenerator.getElevation(gx, gy, seed, mapId);
+  const isRiver = RiverGenerator.isRawRiverTile(gx, gy, seed, mapId);
+  const isPond = PondGenerator.isRawPondTile(gx, gy, seed);
+  const elevation = HeightGenerator.getBaseElevation(gx, gy, seed, mapId);
 
   if (isRiver || isPond || LakeGenerator.isLakeTile(elevation, gx, gy, seed)) {
-    return {
+    const biome: BiomeInfo = {
       id: 'lake',
       name: 'Cerulean Lake',
       bgColor: '#3b6fa0',
@@ -866,10 +897,12 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
       treeColor: '#1d4a0e',
       tallGrassColor: '#4d8a3e',
     };
+    biomeCache[cacheKey] = biome;
+    return biome;
   }
 
   if (BiomeGenerator.isBeachTile(gx, gy, seed, mapId)) {
-    return {
+    const biome: BiomeInfo = {
       id: 'desert',
       name: 'Sandy Beach',
       bgColor: '#d8c292',
@@ -877,6 +910,8 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
       treeColor: '#c29b53',
       tallGrassColor: '#b59247',
     };
+    biomeCache[cacheKey] = biome;
+    return biome;
   }
 
   const moisture = MoistureGenerator.getMoisture(gx, gy, seed);
@@ -884,7 +919,7 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
   const biomeId = BiomeGenerator.determineBiome(elevation, moisture, temp);
 
   if (biomeId === 'mountain') {
-    return {
+    const biome: BiomeInfo = {
       id: 'mountain',
       name: 'Craggy Highlands',
       bgColor: '#5a4a35',
@@ -892,6 +927,8 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
       treeColor: '#2d4d2d',
       tallGrassColor: '#4a7a4a',
     };
+    biomeCache[cacheKey] = biome;
+    return biome;
   }
 
   const cDesertBg = '#d8c292';
@@ -943,7 +980,7 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     tallGrassColor = lerpColor(cPlainsTallGrass, cForestTallGrass, t);
   }
 
-  return {
+  const result: BiomeInfo = {
     id: biomeId,
     name: biomeId === 'forest' ? 'Ancient Grove' : biomeId === 'desert' ? 'Sandy Wasteland' : 'Grassland Plains',
     bgColor,
@@ -951,6 +988,8 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     treeColor,
     tallGrassColor
   };
+  biomeCache[cacheKey] = result;
+  return result;
 }
 
 function lerpColor(c1: string, c2: string, t: number): string {
@@ -1076,7 +1115,19 @@ export function getRouteOutpostTile(gx: number, gy: number, mapId: string = 'cit
   return null;
 }
 
+// Cache for raw terrain tiles to avoid recomputation
+const rawTerrainCache: Record<string, number> = {};
+
+// Cache for biome info to avoid expensive getBiomeAt() calls during rendering
+const biomeCache: Record<string, BiomeInfo> = {};
+
 export function rawTerrainTile(gx: number, gy: number, seed: number, mapId: string = 'city'): number {
+  // Check cache first
+  const cacheKey = `${seed}_${mapId}_${gx}_${gy}`;
+  if (rawTerrainCache[cacheKey] !== undefined) {
+    return rawTerrainCache[cacheKey];
+  }
+
   if (seed === 0) {
     return getCityTile(gx, gy);
   }
@@ -1087,62 +1138,76 @@ export function rawTerrainTile(gx: number, gy: number, seed: number, mapId: stri
 
   const outpostTile = getRouteOutpostTile(gx, gy, mapId);
   if (outpostTile !== null) {
+    rawTerrainCache[cacheKey] = outpostTile;
     return outpostTile;
   }
 
   const landmarkTile = LandmarkGenerator.getTile(gx, gy, seed, mapId);
   if (landmarkTile !== null) {
+    rawTerrainCache[cacheKey] = landmarkTile;
     return landmarkTile;
   }
 
-  const elevation = HeightGenerator.getElevation(gx, gy, seed);
+  const elevation = HeightGenerator.getBaseElevation(gx, gy, seed, mapId);
   const moisture = MoistureGenerator.getMoisture(gx, gy, seed);
   const temp = TemperatureGenerator.getTemperature(gx, gy, seed, elevation);
 
   const biomeId = BiomeGenerator.determineBiome(elevation, moisture, temp);
 
-  const isRiver = RiverGenerator.isRiverTile(gx, gy, seed, mapId);
+  const isRiver = RiverGenerator.isRawRiverTile(gx, gy, seed, mapId);
   if (isRiver) {
+    rawTerrainCache[cacheKey] = TILE_WATER;
     return TILE_WATER;
   }
 
   if (LakeGenerator.isLakeTile(elevation, gx, gy, seed)) {
+    rawTerrainCache[cacheKey] = TILE_WATER;
     return TILE_WATER;
   }
 
-  const pondTile = PondGenerator.getTile(gx, gy, seed);
+  const pondTile = PondGenerator.getRawTile(gx, gy, seed);
   if (pondTile !== null) {
+    rawTerrainCache[cacheKey] = pondTile;
     return pondTile;
   }
 
-  const nearWater = BiomeGenerator.isNearWater(gx, gy, seed, mapId);
+  const nearWater = BiomeGenerator.isBeachTile(gx, gy, seed, mapId);
   if (nearWater) {
     const beachTile = BeachGenerator.getTile(gx, gy, seed, true);
     if (beachTile !== null) {
+      rawTerrainCache[cacheKey] = beachTile;
       return beachTile;
     }
+    rawTerrainCache[cacheKey] = TILE_GRASS;
     return TILE_GRASS;
   }
 
-  const southElevation = HeightGenerator.getElevation(gx, gy + 1, seed);
+  const southElevation = HeightGenerator.getBaseElevation(gx, gy + 1, seed, mapId);
   const cliffTile = CliffGenerator.getTile(gx, gy, seed, elevation, southElevation);
   if (cliffTile !== null) {
+    rawTerrainCache[cacheKey] = cliffTile;
     return cliffTile;
   }
 
   const roadTile = RoadGenerator.getTile(gx, gy, seed, mapId, elevation);
   if (roadTile !== null) {
+    rawTerrainCache[cacheKey] = roadTile;
     return roadTile;
   }
 
   const vegTile = VegetationGenerator.getTile(gx, gy, seed, moisture, biomeId);
   if (vegTile !== null) {
+    rawTerrainCache[cacheKey] = vegTile;
     return vegTile;
   }
 
   const g = hash2D(gx, gy, seed + 4000);
-  if (g > 0.72) return TILE_TALL_GRASS;
+  if (g > 0.72) {
+    rawTerrainCache[cacheKey] = TILE_TALL_GRASS;
+    return TILE_TALL_GRASS;
+  }
 
+  rawTerrainCache[cacheKey] = TILE_GRASS;
   return TILE_GRASS;
 }
 

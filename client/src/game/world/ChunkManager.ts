@@ -6,6 +6,7 @@ import {
   generateChunkTiles as generateChunkTilesShared,
   isWalkableTileId,
   getBiomeAt,
+  BiomeInfo,
   HeightGenerator,
   DecorationGenerator,
   DecorationType,
@@ -14,10 +15,10 @@ import { CollisionSystem, Collider } from '../../engine/Collision.js';
 import { envSystem } from '../../engine/EnvironmentSystem.js';
 
 interface Chunk {
-  cx: number;
-  cy: number;
-  tiles: number[][];
-  loaded: boolean;
+    cx: number;
+    cy: number;
+    tiles: number[][];
+    loaded: boolean;
 }
 
 export class ChunkManager {
