@@ -1,11 +1,30 @@
-<div align="center">
+# poke-ter
+Roam and catch monsters. heh.
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+## Project Structure
 
-  <h1>Built with AI Studio</h2>
+This project has been restructured into a clean, modular, and modern full-stack TypeScript application:
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+```text
+├── client/          # Frontend client application (Vite, TypeScript, HTML Canvas game engine)
+├── server/          # Backend game and asset server (Express, WS, TypeScript)
+│   ├── src/
+│   │   ├── index.ts     # Main bootstrap script (Server initialization & Vite middleware)
+│   │   ├── game.ts      # GameState manager class for player sessions and broadcasts
+│   │   ├── handlers.ts  # Modularized WebSocket packet routing logic
+│   │   └── types.ts     # Internal server type definitions
+├── shared/          # Common library containing shared game mechanics, types, and constants
+│   └── src/
+│       ├── index.ts     # Unified exports interface
+│       ├── types.ts     # Shared Poke-ter models and interface definitions
+│       ├── constants.ts # System-wide game constants
+│       ├── packets.ts   # Strongly typed network communication packets
+│       ├── math.ts      # Vector maths and grid operations
+│       └── worldgen.ts  # Deterministic infinite chunk world generator
+```
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Running the Project
 
-</div>
+* **Development Mode (Vite & Hot Reloading)**: `npm run dev`
+* **Production Build**: `npm run build`
+* **Production Run**: `npm run start`

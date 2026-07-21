@@ -1,0 +1,6 @@
+{
+  "name": "Poke-ter",
+  "description": "A local multiplayer game set in a pixelated world.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
