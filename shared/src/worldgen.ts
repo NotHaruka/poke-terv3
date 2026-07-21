@@ -182,7 +182,10 @@ export class TemperatureGenerator {
 export class BiomeGenerator {
   static determineBiome(elevation: number, moisture: number, temp: number): string {
     if (elevation < 0.33) return 'lake';
-    if (elevation > 0.73) return 'mountain';
+    if (elevation > 0.82) {
+      return temp < 0.15 ? 'ice_peak' : 'mountain';
+    }
+    if (temp < 0.12) return 'tundra';
 
     if (moisture > 0.55) {
       return 'forest';
@@ -926,6 +929,32 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
       grassColor: '#6c5b45',
       treeColor: '#2d4d2d',
       tallGrassColor: '#4a7a4a',
+    };
+    biomeCache[cacheKey] = biome;
+    return biome;
+  }
+
+  if (biomeId === 'ice_peak') {
+    const biome: BiomeInfo = {
+      id: 'ice_peak',
+      name: 'Frozen Summit',
+      bgColor: '#c9dbe8',
+      grassColor: '#dbe9f2',
+      treeColor: '#4a6b7a',
+      tallGrassColor: '#a8c8d8',
+    };
+    biomeCache[cacheKey] = biome;
+    return biome;
+  }
+
+  if (biomeId === 'tundra') {
+    const biome: BiomeInfo = {
+      id: 'tundra',
+      name: 'Frostbound Tundra',
+      bgColor: '#e2edf2',
+      grassColor: '#eef5f8',
+      treeColor: '#6b8a9a',
+      tallGrassColor: '#b8d4e0',
     };
     biomeCache[cacheKey] = biome;
     return biome;
