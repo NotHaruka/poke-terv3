@@ -109,61 +109,60 @@ function distanceToCurve(px: number, py: number, x0: number, y0: number, x1: num
 // ===== Modular Generator Systems (Seed-Deterministic) =====
 
 export class HeightGenerator {
-  static getElevation(gx: number, gy: number, seed: number, mapId: string = 'route_1'): number {
-    // 1. Flatten towns completely to prevent hills/depressions
-    const cx = Math.floor(gx / CHUNK_SIZE);
-    const cy = Math.floor(gy / CHUNK_SIZE);
-    if (seed !== 0 && isTownChunk(cx, cy, seed)) {
-      return 0.45; // flat ground
-    }
-
-    // 2. Beautiful thematic landscape blending for landmarks
+  // NEW: Generates the raw terrain data, completely ignoring towns to prevent recursion loops
+  static getBaseElevation(gx: number, gy: number, seed: number, mapId: string = 'route_1'): number {
+    // Beautiful thematic landscape blending for landmarks
     if (mapId === 'route_1') {
-      // Shrine at (110, 110) in a flat clearing
       const dist = Math.sqrt((gx - 110) ** 2 + (gy - 110) ** 2);
       if (dist < 15) return 0.45;
     } else if (mapId === 'route_2') {
-      // Tower at (150, 130) on an elevated plateau
       const dist = Math.sqrt((gx - 150) ** 2 + (gy - 130) ** 2);
       if (dist < 15) return 0.68;
     } else if (mapId === 'route_3') {
-      // Cabin at (130, 90) beside a scenic lakeside
       const dist = Math.sqrt((gx - 130) ** 2 + (gy - 90) ** 2);
       if (dist < 15) {
         const lakeDist = Math.sqrt((gx - 138) ** 2 + (gy - 90) ** 2);
-        if (lakeDist < 6) return 0.25; // water body
-        return 0.42; // lakeside flat land
+        if (lakeDist < 6) return 0.25; 
+        return 0.42; 
       }
     } else if (mapId === 'route_4') {
-      // Crater at (105, 145) inside a craggy mountain basin
       const dist = Math.sqrt((gx - 105) ** 2 + (gy - 145) ** 2);
       if (dist < 15) {
-        if (dist < 6) return 0.30; // low crater basin
-        if (dist < 9) return 0.75; // high rim
-        return 0.55; // outer slope
+        if (dist < 6) return 0.30; 
+        if (dist < 9) return 0.75; 
+        return 0.55; 
       }
     }
 
-    // 3. Large, natural, connected mountain ridges using base FBM + ridged FBM
+    // Large, natural, connected mountain ridges using base FBM + ridged FBM
     const base = fbm2D(gx, gy, seed, 4, 0.012);
     const n2 = fbm2D(gx + 500, gy + 500, seed + 123, 3, 0.02);
     const ridge = 1.0 - Math.abs(n2 * 2.0 - 1.0);
 
     let raw = base;
     if (base > 0.52) {
-      // Create tall, connected ridges
       raw = base + ridge * 0.25;
     } else {
-      // Flat valleys and plains basins
       raw = Math.pow(base / 0.52, 1.5) * 0.52;
     }
 
-    // High stepped plateaus
     if (raw > 0.66 && raw < 0.74) {
-      raw = 0.68; // flat plateau step
+      raw = 0.68; 
     }
 
     return Math.min(0.99, Math.max(0.0, raw));
+  }
+
+  static getElevation(gx: number, gy: number, seed: number, mapId: string = 'route_1'): number {
+    const cx = Math.floor(gx / CHUNK_SIZE);
+    const cy = Math.floor(gy / CHUNK_SIZE);
+    
+    // Check towns first, but DO NOT use getElevation inside town checks!
+    if (seed !== 0 && isTownChunk(cx, cy, seed)) {
+      return 0.45; // flat ground
+    }
+
+    return this.getBaseElevation(gx, gy, seed, mapId);
   }
 }
 
@@ -194,7 +193,6 @@ export class BiomeGenerator {
   }
 
   static getWaterProximity(gx: number, gy: number, seed: number, mapId: string): number {
-    // Check radius up to 4 tiles for water
     for (let r = 1; r <= 4; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dy = -r; dy <= r; dy++) {
@@ -203,7 +201,7 @@ export class BiomeGenerator {
             const ny = gy + dy;
             const el = HeightGenerator.getElevation(nx, ny, seed, mapId);
             if (el < 0.33 || RiverGenerator.isRiverTile(nx, ny, seed, mapId) || PondGenerator.isPondTile(nx, ny, seed)) {
-              return 5 - r; // closer water has higher value (1..4)
+              return 5 - r;
             }
           }
         }
@@ -215,13 +213,12 @@ export class BiomeGenerator {
   static isBeachTile(gx: number, gy: number, seed: number, mapId: string = 'route_1'): boolean {
     const el = HeightGenerator.getElevation(gx, gy, seed, mapId);
     if (el < 0.33 || RiverGenerator.isRiverTile(gx, gy, seed, mapId) || PondGenerator.isPondTile(gx, gy, seed)) {
-      return false; // water itself is never beach sand
+      return false;
     }
 
     const prox = BiomeGenerator.getWaterProximity(gx, gy, seed, mapId);
     if (prox === 0) return false;
 
-    // Beautiful varying 1-4 tile sand transition width
     const beachNoise = fbm2D(gx * 0.15, gy * 0.15, seed + 7777, 2, 0.08);
     if (prox >= 4) return true;
     if (prox === 3 && beachNoise > 0.3) return true;
@@ -251,7 +248,7 @@ export class RiverGenerator {
 
     for (let x = 40; x < 210; x += 24) {
       for (let y = 40; y < 210; y += 24) {
-        const el = HeightGenerator.getElevation(x, y, seed, mapId);
+        const el = HeightGenerator.getBaseElevation(x, y, seed, mapId);
         if (el > maxEl && el > 0.60) {
           maxEl = el;
           sx = x;
@@ -267,7 +264,7 @@ export class RiverGenerator {
     const maxLen = 140;
 
     for (let step = 0; step < maxLen; step++) {
-      const currentEl = HeightGenerator.getElevation(cx, cy, seed, mapId);
+      const currentEl = HeightGenerator.getBaseElevation(cx, cy, seed, mapId);
       path.push({ x: cx, y: cy, el: currentEl });
       visited.add(`${cx},${cy}`);
 
@@ -284,7 +281,7 @@ export class RiverGenerator {
         const ny = cy + dy;
         if (visited.has(`${nx},${ny}`)) continue;
 
-        const nel = HeightGenerator.getElevation(nx, ny, seed, mapId);
+        const nel = HeightGenerator.getBaseElevation(nx, ny, seed, mapId);
         if (nel < minEl) {
           minEl = nel;
           bestDirs = [[dx, dy]];
@@ -310,7 +307,7 @@ export class RiverGenerator {
           const nx = cx + dx;
           const ny = cy + dy;
           if (visited.has(`${nx},${ny}`)) continue;
-          const nel = HeightGenerator.getElevation(nx, ny, seed, mapId);
+          const nel = HeightGenerator.getBaseElevation(nx, ny, seed, mapId);
           if (nel < lowestNeigh) {
             lowestNeigh = nel;
             escapeDir = [dx, dy];
@@ -329,15 +326,8 @@ export class RiverGenerator {
     return path;
   }
 
-  static isRiverTile(gx: number, gy: number, seed: number, mapId: string): boolean {
+  static isRawRiverTile(gx: number, gy: number, seed: number, mapId: string): boolean {
     if (mapId === 'city') return false;
-
-    // Towns never have river tiles overlapping them
-    const cx = Math.floor(gx / CHUNK_SIZE);
-    const cy = Math.floor(gy / CHUNK_SIZE);
-    if (seed !== 0 && isTownChunk(cx, cy, seed)) {
-      return false;
-    }
 
     const path = this.getRiverPath(seed, mapId);
     if (path.length === 0) return false;
@@ -365,18 +355,28 @@ export class RiverGenerator {
 
     return false;
   }
-}
 
-export class LakeGenerator {
-  static isLakeTile(elevation: number, gx: number, gy: number, seed: number): boolean {
-    // Towns never have lake tiles overlapping them
+  static isRiverTile(gx: number, gy: number, seed: number, mapId: string): boolean {
+    if (mapId === 'city') return false;
+
     const cx = Math.floor(gx / CHUNK_SIZE);
     const cy = Math.floor(gy / CHUNK_SIZE);
     if (seed !== 0 && isTownChunk(cx, cy, seed)) {
       return false;
     }
 
-    // Irregular shoreline simulation using domain warping
+    return this.isRawRiverTile(gx, gy, seed, mapId);
+  }
+}
+
+export class LakeGenerator {
+  static isLakeTile(elevation: number, gx: number, gy: number, seed: number): boolean {
+    const cx = Math.floor(gx / CHUNK_SIZE);
+    const cy = Math.floor(gy / CHUNK_SIZE);
+    if (seed !== 0 && isTownChunk(cx, cy, seed)) {
+      return false;
+    }
+
     const warpX = fbm2D(gx * 0.08, gy * 0.08, seed + 8500, 2, 0.1) * 6.0;
     const warpY = fbm2D(gx * 0.08, gy * 0.08, seed + 9500, 2, 0.1) * 6.0;
     
@@ -384,10 +384,9 @@ export class LakeGenerator {
     const threshold = 0.34 + shoreNoise;
 
     if (elevation < threshold) {
-      // Natural lake islands, peninsulas, and coves
       const islandNoise = fbm2D(gx * 0.15, gy * 0.15, seed + 900, 2, 0.08);
       if (islandNoise > 0.70 && elevation > threshold - 0.08) {
-        return false; // grass island
+        return false;
       }
       return true;
     }
@@ -396,14 +395,7 @@ export class LakeGenerator {
 }
 
 export class PondGenerator {
-  static getTile(gx: number, gy: number, seed: number): number | null {
-    // Towns never have pond tiles overlapping them
-    const cx = Math.floor(gx / CHUNK_SIZE);
-    const cy = Math.floor(gy / CHUNK_SIZE);
-    if (seed !== 0 && isTownChunk(cx, cy, seed)) {
-      return null;
-    }
-
+  static getRawTile(gx: number, gy: number, seed: number): number | null {
     const cellX = Math.floor(gx / 18);
     const cellY = Math.floor(gy / 18);
 
@@ -426,6 +418,20 @@ export class PondGenerator {
     return null;
   }
 
+  static getTile(gx: number, gy: number, seed: number): number | null {
+    const cx = Math.floor(gx / CHUNK_SIZE);
+    const cy = Math.floor(gy / CHUNK_SIZE);
+    if (seed !== 0 && isTownChunk(cx, cy, seed)) {
+      return null;
+    }
+
+    return this.getRawTile(gx, gy, seed);
+  }
+
+  static isRawPondTile(gx: number, gy: number, seed: number): boolean {
+    return this.getRawTile(gx, gy, seed) !== null;
+  }
+
   static isPondTile(gx: number, gy: number, seed: number): boolean {
     return this.getTile(gx, gy, seed) !== null;
   }
@@ -435,11 +441,9 @@ export class BeachGenerator {
   static getTile(gx: number, gy: number, seed: number, isNearWater: boolean, mapId: string = 'city'): number | null {
     if (!isNearWater) return null;
 
-    // No mountain rocks or boulders on beaches
-    // Occasional reeds/weeds near shorelines
     const h = hash2D(gx, gy, seed + 3500);
     if (h < 0.15) {
-      return TILE_TALL_GRASS; // reeds / shore grasses
+      return TILE_TALL_GRASS;
     }
 
     return null;
@@ -448,31 +452,24 @@ export class BeachGenerator {
 
 export class CliffGenerator {
   static getTile(gx: number, gy: number, seed: number, elevation: number, southElevation: number, mapId: string = 'route_1'): number | null {
-    // 1. Cliffs exist only in highlands/mountain plateaus (elevation > 0.65)
     if (elevation < 0.65) return null;
-
-    // 2. Eliminate rocky clutter around roads
     if (RoadGenerator.isNearRoad(gx, gy, seed, mapId)) return null;
 
-    // 3. No cliffs overlapping towns
     const cx = Math.floor(gx / CHUNK_SIZE);
     const cy = Math.floor(gy / CHUNK_SIZE);
     if (seed !== 0 && isTownChunk(cx, cy, seed)) return null;
 
-    // 4. No cliffs overlapping water features
     if (RiverGenerator.isRiverTile(gx, gy, seed, mapId) || 
         PondGenerator.isPondTile(gx, gy, seed) || 
         LakeGenerator.isLakeTile(elevation, gx, gy, seed)) {
       return null;
     }
 
-    // 5. Generate beautiful cliff faces facing south on sharp drops
     const diffSouth = elevation - southElevation;
     if (diffSouth >= 0.08) {
       return TILE_MOUNTAIN;
     }
 
-    // East/west drop-offs with continuous noise filter to prevent isolated tiles
     const westElevation = HeightGenerator.getElevation(gx - 1, gy, seed, mapId);
     const eastElevation = HeightGenerator.getElevation(gx + 1, gy, seed, mapId);
     if (elevation - westElevation >= 0.08 || elevation - eastElevation >= 0.08) {
@@ -593,7 +590,6 @@ export class RoadGenerator {
       }
     }
 
-    // Connect to towns using cached town positions (prevents massive un-cached loop overhead)
     if (seed !== 0) {
       const towns = this.getTownChunksForSeed(seed);
       for (const town of towns) {
@@ -619,7 +615,6 @@ export class RoadGenerator {
     }
 
     if (minDist < 1.5) {
-      // Wood floor represents bridges over water bodies
       if (elevation < 0.33 || RiverGenerator.isRiverTile(gx, gy, seed, mapId) || PondGenerator.isPondTile(gx, gy, seed)) {
         return TILE_BUILDING_FLOOR;
       }
@@ -711,28 +706,23 @@ export class LandmarkGenerator {
 
 export class VegetationGenerator {
   static getTile(gx: number, gy: number, seed: number, moisture: number, biomeId: string, mapId: string = 'route_1'): number | null {
-    // Avoid blocking roads
     if (RoadGenerator.isNearRoad(gx, gy, seed, mapId)) return null;
 
-    // Continuous forest density mapping to form dense cores, woodlands, clearings, and groves
     const forestNoise = fbm2D(gx, gy, seed + 1200, 3, 0.04);
     const detailNoise = valueNoise2D(gx * 0.6, gy * 0.6, seed + 3000);
 
     if (biomeId === 'forest') {
-      // Dense Forest Core
       if (forestNoise > 0.55) {
         if (detailNoise < 0.22) {
-          return TILE_TALL_GRASS; // clearing
+          return TILE_TALL_GRASS;
         }
         return TILE_TREE;
       }
-      // Outer Woodlands
       if (forestNoise > 0.38) {
         if (detailNoise > 0.45) return TILE_TREE;
         if (detailNoise < 0.25) return TILE_TALL_GRASS;
         return TILE_GRASS;
       }
-      // Winding edge groves
       if (forestNoise > 0.25) {
         if (detailNoise > 0.65) return TILE_TREE;
         if (detailNoise > 0.4) return TILE_TALL_GRASS;
@@ -741,7 +731,6 @@ export class VegetationGenerator {
     }
 
     if (biomeId === 'plains') {
-      // Spacious plains: very few lone trees, small occasional groves, patches of tall grass
       if (forestNoise > 0.45 && detailNoise > 0.75) {
         return TILE_TREE;
       }
@@ -769,9 +758,8 @@ export enum DecorationType {
 
 export class DecorationGenerator {
   static getDecoration(gx: number, gy: number, seed: number, tileId: number, biomeId: string): DecorationType {
-    if (seed === 0) return DecorationType.NONE; // no decorations in custom city
+    if (seed === 0) return DecorationType.NONE;
 
-    // Decorations are strictly part of a separate layer on grass or paths
     if (tileId !== TILE_GRASS && tileId !== TILE_PATH) {
       return DecorationType.NONE;
     }
@@ -818,7 +806,6 @@ export interface BiomeInfo {
   tallGrassColor: string;
 }
 
-/** Get biome info at a global tile coordinate */
 export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string = 'route_1'): BiomeInfo {
   if (seed === 0) {
     return {
@@ -831,7 +818,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     };
   }
 
-  // Enforce forest biome at extreme route borders so boundary trees render beautifully with lush green grass backgrounds
   if (gx <= 3 || gx >= 252 || gy <= 3 || gy >= 252) {
     return {
       id: 'forest',
@@ -843,7 +829,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     };
   }
 
-  // Try landmark first (with proper mapId)
   const landmark = LandmarkGenerator.getTile(gx, gy, seed, mapId);
   if (landmark !== null) {
     if (landmark === TILE_WATER) {
@@ -868,7 +853,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     }
   }
 
-  // Check water features (rivers, lakes, ponds)
   const isRiver = RiverGenerator.isRiverTile(gx, gy, seed, mapId);
   const isPond = PondGenerator.isPondTile(gx, gy, seed);
   const elevation = HeightGenerator.getElevation(gx, gy, seed, mapId);
@@ -884,7 +868,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     };
   }
 
-  // Beach sand transition
   if (BiomeGenerator.isBeachTile(gx, gy, seed, mapId)) {
     return {
       id: 'desert',
@@ -911,7 +894,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     };
   }
 
-  // Dynamic Color Blending based on continuous moisture and elevation mapping
   const cDesertBg = '#d8c292';
   const cDesertGrass = '#e4d2a3';
   const cDesertTree = '#c29b53';
@@ -943,7 +925,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     treeColor = cForestTree;
     tallGrassColor = cForestTallGrass;
   } else if (moisture < 0.38) {
-    // Interpolate desert -> plains
     const t = (moisture - 0.22) / (0.38 - 0.22);
     bgColor = lerpColor(cDesertBg, cPlainsBg, t);
     grassColor = lerpColor(cDesertGrass, cPlainsGrass, t);
@@ -955,7 +936,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     treeColor = cPlainsTree;
     tallGrassColor = cPlainsTallGrass;
   } else {
-    // Interpolate plains -> forest
     const t = (moisture - 0.42) / (0.58 - 0.42);
     bgColor = lerpColor(cPlainsBg, cForestBg, t);
     grassColor = lerpColor(cPlainsGrass, cForestGrass, t);
@@ -973,7 +953,6 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
   };
 }
 
-// Color interpolator helper function
 function lerpColor(c1: string, c2: string, t: number): string {
   const r1 = parseInt(c1.substring(1, 3), 16);
   const g1 = parseInt(c1.substring(3, 5), 16);
@@ -994,9 +973,7 @@ function lerpColor(c1: string, c2: string, t: number): string {
   return `#${rs}${gs}${bs}`;
 }
 
-/** Design a static, handcrafted-feeling permanent city layout centered around 128, 128 */
 export function getCityTile(gx: number, gy: number): number {
-  // Define City Bounds
   const cityMinX = 105;
   const cityMaxX = 149;
   const cityMinY = 95;
@@ -1004,38 +981,29 @@ export function getCityTile(gx: number, gy: number): number {
 
   const isInsideCity = (gx >= cityMinX && gx <= cityMaxX && gy >= cityMinY && gy <= cityMaxY);
 
-  // If outside the city, block with impenetrable boundary forest
   if (!isInsideCity) {
     return TILE_TREE;
   }
 
-  // Define Portal sites and their beautiful stone pedestals
-  // 1. North Portal (127, 96)
   if (gx >= 126 && gx <= 128 && gy >= 95 && gy <= 97) {
     if (gx === 127 && gy === 96) return TILE_PORTAL;
-    return TILE_PATH; // platform floor
+    return TILE_PATH;
   }
-  // 2. South Portal (127, 148)
   if (gx >= 126 && gx <= 128 && gy >= 147 && gy <= 149) {
     if (gx === 127 && gy === 148) return TILE_PORTAL;
-    return TILE_PATH; // platform floor
+    return TILE_PATH;
   }
-  // 3. East Portal (148, 121)
   if (gx >= 147 && gx <= 149 && gy >= 120 && gy <= 122) {
     if (gx === 148 && gy === 121) return TILE_PORTAL;
-    return TILE_PATH; // platform floor
+    return TILE_PATH;
   }
-  // 4. West Portal (106, 121)
   if (gx >= 105 && gx <= 107 && gy >= 120 && gy <= 122) {
     if (gx === 106 && gy === 121) return TILE_PORTAL;
-    return TILE_PATH; // platform floor
+    return TILE_PATH;
   }
 
-  // Main roads: vertical at gx: 124 to 130, and horizontal at gy: 118 to 124
   const isMainRoad = (gy >= 118 && gy <= 124) || (gx >= 124 && gx <= 130);
 
-  // Inside or on the exit path
-  // Pokemon Center (Healer House)
   if (gx >= 112 && gx <= 122 && gy >= 104 && gy <= 112) {
     if (gy === 112 && gx === 117) return TILE_DOOR;
     if (gy === 112) return TILE_BUILDING_WALL;
@@ -1043,7 +1011,6 @@ export function getCityTile(gx: number, gy: number): number {
     return TILE_BUILDING_FLOOR;
   }
 
-  // Poke Mart (Merchant Shop)
   if (gx >= 132 && gx <= 142 && gy >= 104 && gy <= 112) {
     if (gy === 112 && gx === 137) return TILE_DOOR;
     if (gy === 112) return TILE_BUILDING_WALL;
@@ -1051,7 +1018,6 @@ export function getCityTile(gx: number, gy: number): number {
     return TILE_BUILDING_FLOOR;
   }
 
-  // Storage Vault
   if (gx >= 112 && gx <= 122 && gy >= 132 && gy <= 140) {
     if (gy === 140 && gx === 117) return TILE_DOOR;
     if (gy === 140) return TILE_BUILDING_WALL;
@@ -1059,7 +1025,6 @@ export function getCityTile(gx: number, gy: number): number {
     return TILE_BUILDING_FLOOR;
   }
 
-  // Crafting Lab
   if (gx >= 132 && gx <= 142 && gy >= 132 && gy <= 140) {
     if (gy === 140 && gx === 137) return TILE_DOOR;
     if (gy === 140) return TILE_BUILDING_WALL;
@@ -1067,14 +1032,12 @@ export function getCityTile(gx: number, gy: number): number {
     return TILE_BUILDING_FLOOR;
   }
 
-  // Decor trees inside the city to give it a nice organic park feel
   if (isInsideCity) {
-    // Avoid blocking any main roads or structures
     const isNearStructure = 
-      (gx >= 110 && gx <= 124 && gy >= 102 && gy <= 114) || // Center
-      (gx >= 130 && gx <= 144 && gy >= 102 && gy <= 114) || // Mart
-      (gx >= 110 && gx <= 124 && gy >= 130 && gy <= 142) || // Storage
-      (gx >= 130 && gx <= 144 && gy >= 130 && gy <= 142);   // Lab
+      (gx >= 110 && gx <= 124 && gy >= 102 && gy <= 114) || 
+      (gx >= 130 && gx <= 144 && gy >= 102 && gy <= 114) || 
+      (gx >= 110 && gx <= 124 && gy >= 130 && gy <= 142) || 
+      (gx >= 130 && gx <= 144 && gy >= 130 && gy <= 142);
 
     if (!isMainRoad && !isNearStructure) {
       if (hash2D(gx, gy, 888) > 0.72) {
@@ -1089,83 +1052,69 @@ export function getCityTile(gx: number, gy: number): number {
 
 export function getRouteOutpostTile(gx: number, gy: number, mapId: string = 'city'): number | null {
   if (mapId === 'route_1') {
-    // Route 1 Portal: South edge (gx 127, gy 244)
     if (gx >= 126 && gx <= 128 && gy >= 243 && gy <= 245) {
       if (gx === 127 && gy === 244) return TILE_PORTAL;
-      return TILE_PATH; // platform floor
+      return TILE_PATH;
     }
   } else if (mapId === 'route_2') {
-    // Route 2 Portal: North edge (gx 127, gy 12)
     if (gx >= 126 && gx <= 128 && gy >= 11 && gy <= 13) {
       if (gx === 127 && gy === 12) return TILE_PORTAL;
-      return TILE_PATH; // platform floor
+      return TILE_PATH;
     }
   } else if (mapId === 'route_3') {
-    // Route 3 Portal: West edge (gx 12, gy 121)
     if (gx >= 11 && gx <= 13 && gy >= 120 && gy <= 122) {
       if (gx === 12 && gy === 121) return TILE_PORTAL;
-      return TILE_PATH; // platform floor
+      return TILE_PATH;
     }
   } else if (mapId === 'route_4') {
-    // Route 4 Portal: East edge (gx 244, gy 121)
     if (gx >= 243 && gx <= 245 && gy >= 120 && gy <= 122) {
       if (gx === 244 && gy === 121) return TILE_PORTAL;
-      return TILE_PATH; // platform floor
+      return TILE_PATH;
     }
   }
 
   return null;
 }
 
-/** Raw terrain tile at a GLOBAL tile coordinate, ignoring towns. */
 export function rawTerrainTile(gx: number, gy: number, seed: number, mapId: string = 'city'): number {
   if (seed === 0) {
     return getCityTile(gx, gy);
   }
 
-  // Enforce solid boundary trees at the extreme borders of procedural Routes
   if (gx <= 3 || gx >= 252 || gy <= 3 || gy >= 252) {
     return TILE_TREE;
   }
 
-  // Enforce central Expedition Outpost Gatehouse
   const outpostTile = getRouteOutpostTile(gx, gy, mapId);
   if (outpostTile !== null) {
     return outpostTile;
   }
 
-  // PASS 1: Landmark Placement (Highest priority so landmarks aren't carved up)
   const landmarkTile = LandmarkGenerator.getTile(gx, gy, seed, mapId);
   if (landmarkTile !== null) {
     return landmarkTile;
   }
 
-  // PASS 2: Height Map, Moisture Map, and Temperature Map Generation
   const elevation = HeightGenerator.getElevation(gx, gy, seed);
   const moisture = MoistureGenerator.getMoisture(gx, gy, seed);
   const temp = TemperatureGenerator.getTemperature(gx, gy, seed, elevation);
 
-  // PASS 3: Biome Assignment
   const biomeId = BiomeGenerator.determineBiome(elevation, moisture, temp);
 
-  // PASS 4: River Generation (Flowing from high elevation down towards lakes/edges)
   const isRiver = RiverGenerator.isRiverTile(gx, gy, seed, mapId);
   if (isRiver) {
     return TILE_WATER;
   }
 
-  // PASS 5: Lake Generation (Flooding depressions and creating irregular shorelines + islands)
   if (LakeGenerator.isLakeTile(elevation, gx, gy, seed)) {
     return TILE_WATER;
   }
 
-  // PASS 6: Pond Generation (Small organic bodies of water with surrounding reeds)
   const pondTile = PondGenerator.getTile(gx, gy, seed);
   if (pondTile !== null) {
     return pondTile;
   }
 
-  // PASS 7: Beach Detection & Transition Zone
   const nearWater = BiomeGenerator.isNearWater(gx, gy, seed, mapId);
   if (nearWater) {
     const beachTile = BeachGenerator.getTile(gx, gy, seed, true);
@@ -1175,26 +1124,22 @@ export function rawTerrainTile(gx: number, gy: number, seed: number, mapId: stri
     return TILE_GRASS;
   }
 
-  // PASS 8: Cliff Detection (Finding steep elevation changes to render rock faces)
   const southElevation = HeightGenerator.getElevation(gx, gy + 1, seed);
   const cliffTile = CliffGenerator.getTile(gx, gy, seed, elevation, southElevation);
   if (cliffTile !== null) {
     return cliffTile;
   }
 
-  // PASS 9: Road Generation (Winding dirt paths near towns)
   const roadTile = RoadGenerator.getTile(gx, gy, seed, mapId, elevation);
   if (roadTile !== null) {
     return roadTile;
   }
 
-  // PASS 10: Vegetation Generation (Organic forest distribution with clearings)
   const vegTile = VegetationGenerator.getTile(gx, gy, seed, moisture, biomeId);
   if (vegTile !== null) {
     return vegTile;
   }
 
-  // PASS 11: Decoration & Default Grass Variant Placement
   const g = hash2D(gx, gy, seed + 4000);
   if (g > 0.72) return TILE_TALL_GRASS;
 
@@ -1222,25 +1167,31 @@ function getTownSuitability(cx: number, cy: number, seed: number): number {
 
   let score = 100;
   for (const [sx, sy] of samples) {
-    const el = HeightGenerator.getElevation(sx, sy, seed);
+    // FIX: Use getBaseElevation, isRawRiverTile, and isRawPondTile to prevent stack overflow recursion
+    const el = HeightGenerator.getBaseElevation(sx, sy, seed);
     if (el < 0.33) {
       score -= 150;
     }
     if (el > 0.58) {
       score -= 100;
     }
-    if (RiverGenerator.isRiverTile(sx, sy, seed, 'route_1')) {
+    if (RiverGenerator.isRawRiverTile(sx, sy, seed, 'route_1')) {
       score -= 150;
     }
-    if (PondGenerator.isPondTile(sx, sy, seed)) {
+    if (PondGenerator.isRawPondTile(sx, sy, seed)) {
       score -= 150;
     }
   }
   return score;
 }
 
-/** Which chunk (if any) in this cell of the town-spacing grid is the town. */
+// Global cache for town chunk grid lookups to prevent heavy math loops on safe-spawn checks
+const townChunkCellCache: Record<string, ChunkCoordPair> = {};
+
 function townChunkForCell(cellX: number, cellY: number, seed: number): ChunkCoordPair {
+  const cacheKey = `${cellX}_${cellY}_${seed}`;
+  if (townChunkCellCache[cacheKey]) return townChunkCellCache[cacheKey];
+
   let bestCx = cellX * TOWN_CHUNK_SPACING;
   let bestCy = cellY * TOWN_CHUNK_SPACING;
   let maxScore = -999999;
@@ -1261,58 +1212,46 @@ function townChunkForCell(cellX: number, cellY: number, seed: number): ChunkCoor
     }
   }
 
-  return {
-    cx: bestCx,
-    cy: bestCy,
-  };
+  const result = { cx: bestCx, cy: bestCy };
+  townChunkCellCache[cacheKey] = result;
+  return result;
 }
 
 export function isTownChunk(cx: number, cy: number, seed: number): boolean {
-  if (seed === 0) return false; // permanent city is custom and doesn't use random towns
+  if (seed === 0) return false;
   const cellX = Math.floor(cx / TOWN_CHUNK_SPACING);
   const cellY = Math.floor(cy / TOWN_CHUNK_SPACING);
   const town = townChunkForCell(cellX, cellY, seed);
   return town.cx === cx && town.cy === cy;
 }
 
-/**
- * Stamp a highly stylized themed town template onto the chunk tile grid (mutates in place).
- * Picked deterministically by cell coordinates to ensure high visual variety across towns.
- */
 function stampTown(tiles: number[][], cx: number, cy: number, seed: number): void {
   const townHash = hash2D(cx, cy, seed + 12000);
-  const townType = Math.floor(townHash * 3); // 0: Fishing Village, 1: Forest Sanctuary, 2: Mountain Camp
+  const townType = Math.floor(townHash * 3);
 
-  // Clear obstacles in town chunk boundaries (x: 1..14, y: 1..14)
   for (let y = 1; y <= 14; y++) {
     for (let x = 1; x <= 14; x++) {
       tiles[y][x] = TILE_GRASS;
     }
   }
 
-  // Draw cleaner intersecting roads entering and leaving town (at x = 7 and y = 7)
-  // This ensures roads from all 4 directions naturally enter/leave!
   for (let i = 0; i < 16; i++) {
     tiles[7][i] = TILE_PATH;
     tiles[i][7] = TILE_PATH;
   }
 
   if (townType === 0) {
-    // === FISHING VILLAGE (Water/Piers Theme) ===
-    // Beautiful water cove on the right (x: 12..14, y: 1..14, excluding the road at y = 7)
     for (let y = 1; y <= 14; y++) {
-      if (y === 7) continue; // preserve entering road
+      if (y === 7) continue;
       for (let x = 12; x <= 14; x++) {
         tiles[y][x] = TILE_WATER;
       }
     }
 
-    // Wooden bridge docks extending from the road into water
     for (let x = 8; x <= 14; x++) {
-      tiles[7][x] = TILE_BUILDING_FLOOR; // bridge tiles
+      tiles[7][x] = TILE_BUILDING_FLOOR;
     }
 
-    // Building 1 (Fisherman's Main Cabin): at x: 2..6, y: 2..5
     for (let y = 2; y <= 5; y++) {
       for (let x = 2; x <= 6; x++) {
         if (y === 2 || y === 5 || x === 2 || x === 6) {
@@ -1324,7 +1263,6 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     }
     tiles[5][4] = TILE_DOOR;
 
-    // Building 2 (Fish Market Shack): at x: 2..5, y: 10..13
     for (let y = 10; y <= 13; y++) {
       for (let x = 2; x <= 5; x++) {
         if (y === 10 || y === 13 || x === 2 || x === 5) {
@@ -1336,15 +1274,12 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     }
     tiles[10][4] = TILE_DOOR;
 
-    // Fences and decoration trees
     tiles[2][8] = TILE_TREE;
     tiles[13][8] = TILE_TREE;
     tiles[3][10] = TILE_TALL_GRASS;
     tiles[11][10] = TILE_TALL_GRASS;
 
   } else if (townType === 1) {
-    // === FOREST SANCTUARY (Nature/Woodland Theme) ===
-    // Building 1 (Sanctuary Lodge): at x: 2..6, y: 2..5
     for (let y = 2; y <= 5; y++) {
       for (let x = 2; x <= 6; x++) {
         if (y === 2 || y === 5 || x === 2 || x === 6) {
@@ -1356,7 +1291,6 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     }
     tiles[5][4] = TILE_DOOR;
 
-    // Building 2 (Greenhouse Shrine): at x: 9..13, y: 2..5
     for (let y = 2; y <= 5; y++) {
       for (let x = 9; x <= 13; x++) {
         if (y === 2 || y === 5 || x === 9 || x === 13) {
@@ -1368,34 +1302,28 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     }
     tiles[5][11] = TILE_DOOR;
 
-    // Fenced Garden at x: 2..6, y: 10..13
-    // Use TILE_BUILDING_WALL for the neat wooden garden fence
     for (let y = 10; y <= 13; y++) {
       for (let x = 2; x <= 6; x++) {
         if (y === 10 || x === 2 || x === 6) {
-          tiles[y][x] = TILE_BUILDING_WALL; // fence
+          tiles[y][x] = TILE_BUILDING_WALL;
         } else if (y === 13) {
-          // Keep bottom open as a garden gate or path
           if (x === 4) {
             tiles[y][x] = TILE_PATH;
           } else {
             tiles[y][x] = TILE_BUILDING_WALL;
           }
         } else {
-          tiles[y][x] = TILE_TALL_GRASS; // lush garden plants
+          tiles[y][x] = TILE_TALL_GRASS;
         }
       }
     }
 
-    // Elegant sanctuary trees and wild groves framing the town
     tiles[10][9] = TILE_TREE;
     tiles[11][13] = TILE_TREE;
     tiles[13][10] = TILE_TREE;
     tiles[13][13] = TILE_TREE;
 
   } else {
-    // === MOUNTAIN CAMP (Highlands/Stone Theme) ===
-    // Building 1 (Mining Outpost): at x: 2..7, y: 2..5
     for (let y = 2; y <= 5; y++) {
       for (let x = 2; x <= 7; x++) {
         if (y === 2 || y === 5 || x === 2 || x === 7) {
@@ -1407,7 +1335,6 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     }
     tiles[5][4] = TILE_DOOR;
 
-    // Building 2 (Tool Storage): at x: 9..13, y: 10..13
     for (let y = 10; y <= 13; y++) {
       for (let x = 9; x <= 13; x++) {
         if (y === 10 || y === 13 || x === 9 || x === 13) {
@@ -1419,27 +1346,24 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     }
     tiles[10][11] = TILE_DOOR;
 
-    // Mountain town central bonfire / plaza at x: 9..11, y: 3..5
     for (let y = 3; y <= 5; y++) {
       for (let x = 9; x <= 11; x++) {
-        tiles[y][x] = TILE_PATH; // Stone plaza floor
+        tiles[y][x] = TILE_PATH;
       }
     }
-    tiles[4][10] = TILE_PORTAL; // Campfire core represented by a mini-swirling portal/fire!
+    tiles[4][10] = TILE_PORTAL;
 
-    // Stone walls surrounding parts of the camp to feel fortified
     for (let x = 2; x <= 6; x++) {
-      tiles[10][x] = TILE_BUILDING_WALL; // defensive stone fence
+      tiles[10][x] = TILE_BUILDING_WALL;
       tiles[13][x] = TILE_BUILDING_WALL;
     }
     tiles[11][2] = TILE_BUILDING_WALL;
     tiles[12][2] = TILE_BUILDING_WALL;
 
-    tiles[12][4] = TILE_TALL_GRASS; // rugged mountain weeds
+    tiles[12][4] = TILE_TALL_GRASS;
   }
 }
 
-/** Generate a full chunk's tile grid for the given chunk coordinates. */
 export function generateChunkTiles(cx: number, cy: number, seed: number, mapId: string = 'city'): number[][] {
   const tiles: number[][] = [];
 
@@ -1470,7 +1394,6 @@ export function isWalkableTileId(tileId: number): boolean {
   );
 }
 
-// Global town chunk cache to prevent heavy chunk re-generation loops during spatial queries
 const townChunkCache: Record<string, number[][]> = {};
 
 export function getGlobalTile(gx: number, gy: number, seed: number, mapId: string = 'city'): number {
@@ -1523,12 +1446,10 @@ export function findSafeSpawn(seed: number, startPixelX: number, startPixelY: nu
   return { x: startPixelX, y: startPixelY };
 }
 
-/** Get NPC definitions deterministically spawned for a given map */
 export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
   const npcs: NPCDefinition[] = [];
 
   if (mapId === 'city') {
-    // Nurse Joy (Healer) - Placed deeper in Pokemon Center (gx 117, gy 108) instead of blocking door
     npcs.push({
       id: 1,
       name: 'Nurse Joy',
@@ -1541,7 +1462,6 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
       ]]
     });
 
-    // Poké Mart Clerk - Placed deeper in Poke Mart (gx 137, gy 108) instead of blocking door
     npcs.push({
       id: 2,
       name: 'Mart Clerk',
@@ -1554,7 +1474,6 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
       ]]
     });
 
-    // Storage Clerk - Placed deeper in Storage Vault (gx 117, gy 136) instead of blocking door
     npcs.push({
       id: 3,
       name: 'Storage Clerk',
@@ -1566,7 +1485,6 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
       ]]
     });
 
-    // Crafting Expert - Placed deeper in Crafting Lab (gx 137, gy 136) instead of blocking door
     npcs.push({
       id: 4,
       name: 'Crafting Expert',
@@ -1579,7 +1497,6 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
       ]]
     });
 
-    // Travel Guide
     npcs.push({
       id: 5,
       name: 'Travel Guide',
@@ -1594,12 +1511,11 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
       ]]
     });
   } else if (mapId.startsWith('route_')) {
-    // Generate temporary town NPCs in route
     for (let cx = 0; cx < 16; cx++) {
       for (let cy = 0; cy < 16; cy++) {
         if (isTownChunk(cx, cy, seed)) {
           const townHash = hash2D(cx, cy, seed + 12000);
-          const townType = Math.floor(townHash * 3); // 0: Fishing, 1: Forest, 2: Mountain
+          const townType = Math.floor(townHash * 3);
 
           let name = 'Town Merchant';
           let sprite = 'clerk_route';
@@ -1643,7 +1559,6 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
       }
     }
 
-    // Wandering explorers/trainers
     npcs.push({
       id: 201,
       name: 'Explorer Dave',
