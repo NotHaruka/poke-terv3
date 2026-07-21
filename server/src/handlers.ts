@@ -2,7 +2,7 @@ import { GameState } from './game.js';
 import { ClientState } from './types.js';
 import {
   PacketType, AnyPacket, HelloPacket, WelcomePacket,
-  PlayerInputPacket, PlayerMovePacket, ChunkRequestPacket, ChunkDataPacket,
+  PlayerInputPacket, PlayerMovePacket, PlayerPosPacket, ChunkRequestPacket, ChunkDataPacket,
   PlayerJoinPacket, PingPacket, PongPacket,
   ChunkSnapshot, generateChunkTiles, MapChangeRequestPacket, MapChangeResponsePacket, PlayerLeavePacket,
   findSafeSpawn, PLAYER_SPRINT_SPEED, PLAYER_WALK_SPEED

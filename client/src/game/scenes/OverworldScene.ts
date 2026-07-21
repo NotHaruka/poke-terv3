@@ -83,7 +83,7 @@ export class OverworldScene implements Scene {
     const pos = packet as import('poke-ter-shared').PlayerPosPacket;
     this.player.x = pos.position.x;
     this.player.y = pos.position.y;
-    this.player.direction = pos.direction;
+    this.player.direction = pos.direction as import('poke-ter-shared').Direction;
   };
 
   private onWelcome = (packet: any): void => {
@@ -355,99 +355,164 @@ export class OverworldScene implements Scene {
     // Clear with screen backdrop
     this.renderer.clear('#1a1a2e');
 
-    // Render chunks
+    // Render chunks (ground pass — trees only show their low trunk stub here)
     this.chunkManager.render(ctx, offsetX, offsetY);
 
-    // Render NPCs
+    // ===== Y-sorted overhang pass =====
+    // Tall tree canopies, buildings roofs, mountain tops, NPCs, other players, and the local player all get
+    // merged into one list sorted by their grounded Y position.
+    type Drawable = { sortY: number; draw: () => void };
+    const drawables: Drawable[] = [];
+
+    for (const overhang of this.chunkManager.getOverhangs(offsetX, offsetY)) {
+      drawables.push({
+        sortY: overhang.sortY,
+        draw: () => this.chunkManager.renderOverhang(ctx, overhang.type, overhang.screenX, overhang.screenY, overhang.gx, overhang.gy),
+      });
+    }
+
     for (const npc of this.npcs) {
       const screenX = Math.round(npc.position.x - offsetX);
       const screenY = Math.round(npc.position.y - offsetY);
-
       if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
 
-      // Render NPC colored box according to character roles
-      ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ff69b4' : 
-                      npc.sprite === 'clerk' ? '#ffd700' : 
-                      npc.sprite === 'clerk_blue' ? '#4169e1' : 
-                      npc.sprite === 'clerk_route' ? '#ffa500' :
-                      npc.sprite === 'craftsman' ? '#8b4513' : 
-                      npc.sprite === 'guide' ? '#32cd32' : '#708090';
+      drawables.push({
+        sortY: npc.position.y + 16,
+        draw: () => {
+          // Draw npc shadow
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+          ctx.beginPath();
+          ctx.ellipse(screenX + 8, screenY + 15, 7, 3, 0, 0, Math.PI * 2);
+          ctx.fill();
 
-      ctx.fillRect(screenX, screenY, 16, 16);
+          // Draw npc body
+          ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ff69b4' :
+                          npc.sprite === 'clerk' ? '#ffd700' :
+                          npc.sprite === 'clerk_blue' ? '#4169e1' :
+                          npc.sprite === 'clerk_route' ? '#ffa500' :
+                          npc.sprite === 'craftsman' ? '#8b4513' :
+                          npc.sprite === 'guide' ? '#32cd32' : '#708090';
+          ctx.fillRect(screenX + 3, screenY + 10, 10, 6); // pants
+          ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ffffff' : '#dddddd';
+          ctx.fillRect(screenX + 3, screenY + 4, 10, 6); // shirt
+          // head
+          ctx.fillStyle = '#ffccaa'; // skin
+          ctx.fillRect(screenX + 4, screenY - 2, 8, 6);
+          // hair/hat
+          ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ff69b4' : '#555555';
+          ctx.fillRect(screenX + 3, screenY - 4, 10, 3);
+          if (npc.direction === 'left') {
+              ctx.fillRect(screenX + 1, screenY - 2, 4, 2);
+          } else if (npc.direction === 'right') {
+              ctx.fillRect(screenX + 11, screenY - 2, 4, 2);
+          } else if (npc.direction === 'down') {
+              ctx.fillRect(screenX + 3, screenY - 2, 10, 2);
+          }
 
-      // Render direction-specific eyes
-      ctx.fillStyle = '#ffffff';
-      const eyeSize = 2;
-      switch (npc.direction) {
-        case 'up':
-          ctx.fillRect(screenX + 5, screenY + 4, eyeSize, eyeSize);
-          ctx.fillRect(screenX + 9, screenY + 4, eyeSize, eyeSize);
-          break;
-        case 'down':
-          ctx.fillRect(screenX + 5, screenY + 10, eyeSize, eyeSize);
-          ctx.fillRect(screenX + 9, screenY + 10, eyeSize, eyeSize);
-          break;
-        case 'left':
-          ctx.fillRect(screenX + 3, screenY + 7, eyeSize, eyeSize);
-          break;
-        case 'right':
-          ctx.fillRect(screenX + 11, screenY + 7, eyeSize, eyeSize);
-          break;
-        default:
-          ctx.fillRect(screenX + 5, screenY + 10, eyeSize, eyeSize);
-          ctx.fillRect(screenX + 9, screenY + 10, eyeSize, eyeSize);
-          break;
-      }
+          // eyes
+          ctx.fillStyle = '#000000';
+          const eyeSize = 2;
+          switch (npc.direction) {
+            case 'up':
+              break;
+            case 'down':
+              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              break;
+            case 'left':
+              ctx.fillRect(screenX + 4, screenY, eyeSize, eyeSize);
+              break;
+            case 'right':
+              ctx.fillRect(screenX + 10, screenY, eyeSize, eyeSize);
+              break;
+            default:
+              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              break;
+          }
 
-      // Name tags
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '6px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(npc.name, screenX + 8, screenY - 4);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '6px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(npc.name, screenX + 8, screenY - 6);
+        },
+      });
     }
 
-    // Render other players
     for (const [, op] of this.otherPlayers) {
       const screenX = Math.round(op.position.x - offsetX);
       const screenY = Math.round(op.position.y - offsetY);
-
       if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
 
-      // RED for other trainers
-      ctx.fillStyle = '#ff5555';
-      ctx.fillRect(screenX, screenY, 16, 16);
+      drawables.push({
+        sortY: op.position.y + 16,
+        draw: () => {
+          // Draw other player shadow
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+          ctx.beginPath();
+          ctx.ellipse(screenX + 8, screenY + 15, 7, 3, 0, 0, Math.PI * 2);
+          ctx.fill();
 
-      ctx.fillStyle = '#ffffff';
-      const eyeSize = 2;
-      switch (op.direction) {
-        case 'up':
-          ctx.fillRect(screenX + 5, screenY + 4, eyeSize, eyeSize);
-          ctx.fillRect(screenX + 9, screenY + 4, eyeSize, eyeSize);
-          break;
-        case 'down':
-          ctx.fillRect(screenX + 5, screenY + 10, eyeSize, eyeSize);
-          ctx.fillRect(screenX + 9, screenY + 10, eyeSize, eyeSize);
-          break;
-        case 'left':
-          ctx.fillRect(screenX + 3, screenY + 7, eyeSize, eyeSize);
-          break;
-        case 'right':
-          ctx.fillRect(screenX + 11, screenY + 7, eyeSize, eyeSize);
-          break;
-        default:
-          ctx.fillRect(screenX + 5, screenY + 7, eyeSize, eyeSize);
-          ctx.fillRect(screenX + 9, screenY + 7, eyeSize, eyeSize);
-          break;
-      }
+          // Draw other player body
+          ctx.fillStyle = '#9e1e1e'; // pants
+          ctx.fillRect(screenX + 3, screenY + 10, 10, 6);
+          ctx.fillStyle = '#e83a3a'; // shirt
+          ctx.fillRect(screenX + 3, screenY + 4, 10, 6);
+          // head
+          ctx.fillStyle = '#ffccaa'; // skin
+          ctx.fillRect(screenX + 4, screenY - 2, 8, 6);
+          // hair/hat
+          ctx.fillStyle = '#222222'; // hat
+          ctx.fillRect(screenX + 3, screenY - 4, 10, 3);
+          if (op.direction === 'left' || op.direction === 'down-left' || op.direction === 'up-left') {
+              ctx.fillRect(screenX + 1, screenY - 2, 4, 2);
+          } else if (op.direction === 'right' || op.direction === 'down-right' || op.direction === 'up-right') {
+              ctx.fillRect(screenX + 11, screenY - 2, 4, 2);
+          } else if (op.direction === 'down') {
+              ctx.fillRect(screenX + 3, screenY - 2, 10, 2);
+          }
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '6px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(op.username, screenX + 8, screenY - 4);
+          // eyes
+          ctx.fillStyle = '#000000';
+          const eyeSize = 2;
+          switch (op.direction) {
+            case 'up':
+              break;
+            case 'down':
+              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              break;
+            case 'left':
+            case 'down-left':
+            case 'up-left':
+              ctx.fillRect(screenX + 4, screenY, eyeSize, eyeSize);
+              break;
+            case 'right':
+            case 'down-right':
+            case 'up-right':
+              ctx.fillRect(screenX + 10, screenY, eyeSize, eyeSize);
+              break;
+            default:
+              ctx.fillRect(screenX + 5, screenY, eyeSize, eyeSize);
+              ctx.fillRect(screenX + 9, screenY, eyeSize, eyeSize);
+              break;
+          }
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '6px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(op.username, screenX + 8, screenY - 6);
+        },
+      });
     }
 
-    // Render player
-    this.player.render(ctx, offsetX, offsetY);
+    drawables.push({
+      sortY: this.player.y + this.player.height,
+      draw: () => this.player.render(ctx, offsetX, offsetY),
+    });
+
+    drawables.sort((a, b) => a.sortY - b.sortY);
+    for (const d of drawables) d.draw();
 
     // Dialogue Overlay UI
     if (this.isDialogueActive && this.activeDialogueLines.length > 0) {
