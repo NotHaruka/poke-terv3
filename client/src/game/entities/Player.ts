@@ -1,23 +1,28 @@
 /** Player entity with movement, animation, and network sync */
 
 import {
-  Vec2, Direction, TILE_SIZE,
+  Vec2, Direction, TILE_SIZE, PlayerState,
   PLAYER_WALK_SPEED, PLAYER_RUN_SPEED, PLAYER_SPRINT_SPEED,
-  DIAGONAL_NORMALIZER,
+  DIAGONAL_NORMALIZER, PlayerProfile
 } from 'poke-ter-shared';
 import { InputManager } from '../../engine/InputManager.js';
 import { CollisionSystem } from '../../engine/Collision.js';
 
 import { envSystem } from '../../engine/EnvironmentSystem.js';
+import { PlayerRenderer } from '../../engine/rendering/PlayerRenderer.js';
 
 export class Player {
   x: number;
   y: number;
   width: number;
   height: number;
-  speed: number;
+  speed: number = 0;
+  targetSpeed: number = 0;
+  maxSpeed: number = PLAYER_WALK_SPEED;
+  state: PlayerState = PlayerState.Walking;
   direction: Direction = 'down';
   moving = false;
+  profile?: PlayerProfile;
   private inputManager: InputManager;
   private collisionSystem: CollisionSystem;
 
@@ -26,24 +31,34 @@ export class Player {
     y: number,
     inputManager: InputManager,
     collisionSystem: CollisionSystem,
+    profile?: PlayerProfile
   ) {
     this.x = x;
     this.y = y;
     this.width = TILE_SIZE;
     this.height = TILE_SIZE;
-    this.speed = PLAYER_WALK_SPEED;
     this.inputManager = inputManager;
     this.collisionSystem = collisionSystem;
+    this.profile = profile;
   }
 
   update(dt: number): void {
+    if (this.state === PlayerState.MenuOpen || this.state === PlayerState.Cutscene || this.state === PlayerState.Interacting) {
+      this.moving = false;
+      this.speed = 0;
+      this.targetSpeed = 0;
+      return; // Do not process movement if input is disabled
+    }
+
     const dtFactor = dt / 16.667; // Normalize to 60fps
 
-    // Determine speed
+    // Determine target speed based on shift
     if (this.inputManager.isShiftHeld()) {
-      this.speed = PLAYER_SPRINT_SPEED;
+      this.maxSpeed = PLAYER_WALK_SPEED * 1.5; // ~1.5x walking speed for running
+      if (this.state !== PlayerState.MenuOpen) this.state = PlayerState.Running;
     } else {
-      this.speed = PLAYER_WALK_SPEED;
+      this.maxSpeed = PLAYER_WALK_SPEED;
+      if (this.state !== PlayerState.MenuOpen) this.state = PlayerState.Walking;
     }
 
     // Get input direction
@@ -53,18 +68,47 @@ export class Player {
     if (this.inputManager.isDown('ArrowLeft') || this.inputManager.isDown('KeyA')) dx -= 1;
     if (this.inputManager.isDown('ArrowRight') || this.inputManager.isDown('KeyD')) dx += 1;
 
-    this.moving = dx !== 0 || dy !== 0;
+    // Smooth acceleration / deceleration
+    const acceleration = 0.4; 
+    const deceleration = 0.3;
+
+    if (dx !== 0 || dy !== 0) {
+      this.targetSpeed = this.maxSpeed;
+      this.speed += acceleration * dtFactor;
+      if (this.speed > this.targetSpeed) this.speed = this.targetSpeed;
+    } else {
+      this.targetSpeed = 0;
+      this.speed -= deceleration * dtFactor;
+      if (this.speed < 0) this.speed = 0;
+    }
+
+    this.moving = this.speed > 0;
 
     if (this.moving) {
+      // If we don't have active input but are still moving (decelerating), keep moving in last direction
+      // However, if we do have input, use it and update direction
+      let moveDx = dx;
+      let moveDy = dy;
+      
+      if (dx === 0 && dy === 0) {
+        // Continue moving in the facing direction during deceleration
+        if (this.direction.includes('left')) moveDx -= 1;
+        if (this.direction.includes('right')) moveDx += 1;
+        if (this.direction.includes('up')) moveDy -= 1;
+        if (this.direction.includes('down')) moveDy += 1;
+      } else {
+        this.updateDirection(dx, dy);
+      }
+
       // Normalize diagonal movement
-      if (dx !== 0 && dy !== 0) {
-        dx *= DIAGONAL_NORMALIZER;
-        dy *= DIAGONAL_NORMALIZER;
+      if (moveDx !== 0 && moveDy !== 0) {
+        moveDx *= DIAGONAL_NORMALIZER;
+        moveDy *= DIAGONAL_NORMALIZER;
       }
 
       // Calculate desired position
-      const moveX = dx * this.speed * dtFactor;
-      const moveY = dy * this.speed * dtFactor;
+      const moveX = moveDx * this.speed * dtFactor;
+      const moveY = moveDy * this.speed * dtFactor;
       
       // Use a centered smaller collision box (10x10) for smooth navigation of 1x1 gaps and doors
       const colW = 10;
@@ -86,9 +130,6 @@ export class Player {
 
       this.x = result.x - colOffsetX;
       this.y = result.y - colOffsetY;
-
-      // Update direction based on input
-      this.updateDirection(dx, dy);
     }
   }
 
@@ -124,57 +165,37 @@ export class Player {
     this.y = y;
   }
 
+  static renderTrainer(
+    ctx: CanvasRenderingContext2D,
+    screenX: number,
+    screenY: number,
+    direction: Direction,
+    moving: boolean,
+    speed: number,
+    x: number,
+    profile?: PlayerProfile,
+    username?: string
+  ): void {
+    PlayerRenderer.render(
+      ctx,
+      screenX,
+      screenY,
+      direction,
+      moving,
+      speed,
+      x,
+      profile,
+      username
+    );
+  }
+
   /** Render the player */
   render(ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number): void {
     const screenX = Math.round(this.x - offsetX);
     const screenY = Math.round(this.y - offsetY);
 
-    // Draw player shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-    ctx.beginPath();
-    ctx.ellipse(screenX + 8, screenY + 15, 7, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Draw player body
-    ctx.fillStyle = '#1e5b9e'; // pants
-    ctx.fillRect(screenX + 3, screenY + 10, 10, 6);
-    let breathOffset = (!this.moving && Math.sin(envSystem.time * 0.003 + this.x * 0.1) > 0.5) ? 1 : 0; const upperY = screenY + breathOffset; ctx.fillStyle = '#3a8be8';
-    ctx.fillRect(screenX + 3, upperY + 4, 10, 6);
-    // head
-    ctx.fillStyle = '#ffccaa'; // skin
-    ctx.fillRect(screenX + 4, upperY - 2, 8, 6);
-    // hair/hat
-    ctx.fillStyle = '#cc2222'; // hat
-    ctx.fillRect(screenX + 3, upperY - 4, 10, 3);
-    if (this.direction === 'left' || this.direction === 'down-left' || this.direction === 'up-left') {
-        ctx.fillRect(screenX + 1, upperY - 2, 4, 2); // brim left
-    } else if (this.direction === 'right' || this.direction === 'down-right' || this.direction === 'up-right') {
-        ctx.fillRect(screenX + 11, upperY - 2, 4, 2); // brim right
-    } else if (this.direction === 'down') {
-        ctx.fillRect(screenX + 3, upperY - 2, 10, 2); // brim forward
-    }
-
-    // Draw direction indicator (eyes)
-    ctx.fillStyle = '#000000';
-    const eyeSize = 2;
-    switch (this.direction) {
-      case 'up':
-        // no eyes facing away
-        break;
-      case 'down':
-        ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
-        ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
-        break;
-      case 'left':
-      case 'down-left':
-      case 'up-left':
-        ctx.fillRect(screenX + 4, upperY, eyeSize, eyeSize);
-        break;
-      case 'right':
-      case 'down-right':
-      case 'up-right':
-        ctx.fillRect(screenX + 10, upperY, eyeSize, eyeSize);
-        break;
-    }
+    Player.renderTrainer(
+      ctx, screenX, screenY, this.direction, this.moving, this.speed, this.x, this.profile, this.profile?.name
+    );
   }
 }

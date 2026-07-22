@@ -133,6 +133,14 @@ export class NetworkClient {
     return this.connected;
   }
 
+  /** Reconnect with a new profile */
+  setProfile(username: string): void {
+    this.username = username;
+    if (this.connected) {
+      this.sendHello();
+    }
+  }
+
   /** Get player ID */
   getPlayerId(): string {
     return this.playerId;
@@ -153,11 +161,20 @@ export class NetworkClient {
       try { savedSessionId = sessionStorage.getItem('poke_ter_session_id') || ''; } catch (e) {}
     }
     
+    let profile = undefined;
+    try {
+      const profileStr = localStorage.getItem('poketer_player_profile');
+      if (profileStr) {
+        profile = JSON.parse(profileStr);
+      }
+    } catch(e) {}
+    
     const packet: HelloPacket = {
       type: PacketType.Hello,
       username: this.username,
       version: this.version,
       sessionId: savedSessionId || undefined,
+      profile: profile,
       timestamp: Date.now(),
     };
     this.send(packet);

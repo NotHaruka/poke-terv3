@@ -32,6 +32,9 @@ export function handlePacket(gameState: GameState, client: ClientState, packet: 
 
 function handleHello(gameState: GameState, client: ClientState, packet: HelloPacket): void {
   client.username = packet.username;
+  if (packet.profile) {
+    client.profile = packet.profile;
+  }
 
   if (packet.sessionId) {
     const existingClient = gameState.getClient(packet.sessionId);
@@ -44,6 +47,21 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
       }
       gameState.removeClient(client.id, true);
       client = existingClient;
+      if (packet.profile) client.profile = packet.profile; // update profile on reconnect
+    } else if (existingClient && existingClient.id === client.id) {
+      // It's the same client just updating their profile
+      gameState.broadcastToMap(client.mapInstanceId, {
+        type: PacketType.PlayerJoin, // We can reuse PlayerJoin to update profile
+        player: {
+          id: client.id,
+          username: client.username,
+          position: client.position,
+          direction: client.direction,
+          profile: client.profile
+        },
+        timestamp: Date.now(),
+      } as PlayerJoinPacket, client.id);
+      return; // Stop here, no need to send Welcome again
     }
   }
 
@@ -55,6 +73,7 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
       username: c.username,
       position: c.position,
       direction: c.direction,
+      profile: c.profile
     }));
 
   const map = gameState.getMap(client.mapInstanceId)!;
@@ -66,6 +85,7 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
     players,
     mapId: map.id,
     seed: map.seed,
+    serverStartTime: gameState.serverStartTime,
     timestamp: Date.now(),
   } as WelcomePacket);
 
@@ -77,6 +97,7 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
       username: client.username,
       position: client.position,
       direction: client.direction,
+      profile: client.profile
     },
     timestamp: Date.now(),
   } as PlayerJoinPacket, client.id);
@@ -199,6 +220,8 @@ function handleMapChangeRequest(gameState: GameState, client: ClientState, packe
     // If it's a route and doesn't exist, create it
     if (packet.targetMapId.startsWith('route_')) {
       newMap = gameState.createRouteMap(packet.targetMapId);
+    } else if (packet.targetMapId.includes('interior')) {
+      newMap = gameState.createInteriorMap(packet.targetMapId);
     } else {
       // Fallback to city
       newMap = gameState.getMap('city')!;
@@ -209,56 +232,66 @@ function handleMapChangeRequest(gameState: GameState, client: ClientState, packe
   newMap.players.add(client.id);
   
   // Calculate specific spawn positions and directions based on target map and old map
-  let spawnX = 128 * 16;
-  let spawnY = 128 * 16;
-  let spawnDirection: 'up' | 'down' | 'left' | 'right' = 'down';
+  let spawnX = packet.spawnX ?? 128 * 16;
+  let spawnY = packet.spawnY ?? 128 * 16;
+  let spawnDirection: 'up' | 'down' | 'left' | 'right' = packet.spawnDirection ?? 'down';
 
-  if (newMap.id === 'city') {
-    if (oldMapId === 'route_1') {
+  // If the client explicitly provided a spawn location (e.g. interior doors), trust it.
+  // Otherwise, fallback to the portal logic.
+  if (packet.spawnX === undefined || packet.spawnY === undefined) {
+    if (newMap.id === 'city') {
+      if (oldMapId === 'route_1') {
+        spawnX = 127 * 16;
+        spawnY = 98 * 16;
+        spawnDirection = 'down';
+      } else if (oldMapId === 'route_2') {
+        spawnX = 127 * 16;
+        spawnY = 146 * 16;
+        spawnDirection = 'up';
+      } else if (oldMapId === 'route_3') {
+        spawnX = 146 * 16;
+        spawnY = 121 * 16;
+        spawnDirection = 'left';
+      } else if (oldMapId === 'route_4') {
+        spawnX = 108 * 16;
+        spawnY = 121 * 16;
+        spawnDirection = 'right';
+      } else {
+        spawnX = 128 * 16;
+        spawnY = 128 * 16;
+        spawnDirection = 'down';
+      }
+    } else if (newMap.id === 'route_1') {
+      // Route 1 Portal (facing North/up into route)
       spawnX = 127 * 16;
-      spawnY = 98 * 16;
-      spawnDirection = 'down';
-    } else if (oldMapId === 'route_2') {
-      spawnX = 127 * 16;
-      spawnY = 146 * 16;
+      spawnY = 242 * 16;
       spawnDirection = 'up';
-    } else if (oldMapId === 'route_3') {
-      spawnX = 146 * 16;
-      spawnY = 121 * 16;
-      spawnDirection = 'left';
-    } else if (oldMapId === 'route_4') {
-      spawnX = 108 * 16;
+    } else if (newMap.id === 'route_2') {
+      // Route 2 Portal (facing South/down into route)
+      spawnX = 127 * 16;
+      spawnY = 14 * 16;
+      spawnDirection = 'down';
+    } else if (newMap.id === 'route_3') {
+      // Route 3 Portal (facing East/right into route)
+      spawnX = 14 * 16;
       spawnY = 121 * 16;
       spawnDirection = 'right';
-    } else {
-      spawnX = 128 * 16;
-      spawnY = 128 * 16;
-      spawnDirection = 'down';
+    } else if (newMap.id === 'route_4') {
+      // Route 4 Portal (facing West/left into route)
+      spawnX = 242 * 16;
+      spawnY = 121 * 16;
+      spawnDirection = 'left';
     }
-  } else if (newMap.id === 'route_1') {
-    // Route 1 Portal (facing North/up into route)
-    spawnX = 127 * 16;
-    spawnY = 242 * 16;
-    spawnDirection = 'up';
-  } else if (newMap.id === 'route_2') {
-    // Route 2 Portal (facing South/down into route)
-    spawnX = 127 * 16;
-    spawnY = 14 * 16;
-    spawnDirection = 'down';
-  } else if (newMap.id === 'route_3') {
-    // Route 3 Portal (facing East/right into route)
-    spawnX = 14 * 16;
-    spawnY = 121 * 16;
-    spawnDirection = 'right';
-  } else if (newMap.id === 'route_4') {
-    // Route 4 Portal (facing West/left into route)
-    spawnX = 242 * 16;
-    spawnY = 121 * 16;
-    spawnDirection = 'left';
   }
 
   // Assign safe spawn position depending on map
-  client.position = findSafeSpawn(newMap.seed, spawnX, spawnY, newMap.id);
+  // Only try to find a safe spawn if we're not inside an interior (which has strict tile bounds)
+  if (newMap.id.includes('interior') || packet.spawnX !== undefined) {
+    client.position = { x: spawnX, y: spawnY };
+  } else {
+    client.position = findSafeSpawn(newMap.seed, spawnX, spawnY, newMap.id);
+  }
+  
   client.direction = spawnDirection;
 
   // 3. Send response to client
@@ -269,6 +302,7 @@ function handleMapChangeRequest(gameState: GameState, client: ClientState, packe
       username: c.username,
       position: c.position,
       direction: c.direction,
+      profile: c.profile
     }));
 
   gameState.send(client, {
@@ -288,6 +322,7 @@ function handleMapChangeRequest(gameState: GameState, client: ClientState, packe
       username: client.username,
       position: client.position,
       direction: client.direction,
+      profile: client.profile
     },
     timestamp: Date.now(),
   } as PlayerJoinPacket, client.id);

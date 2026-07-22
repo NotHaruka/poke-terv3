@@ -12,6 +12,14 @@ import { UIManager } from '../ui/UIManager.js';
 import { NetworkClient } from '../network/NetworkClient.js';
 import { envSystem } from '../../engine/EnvironmentSystem.js';
 import { AudioManager } from '../../engine/AudioManager.js';
+import { MenuManager } from '../ui/menus/MenuManager.js';
+import { ClockManager } from '../ui/menus/ClockManager.js';
+import { MainMenu } from '../ui/menus/MainMenu.js';
+import { BackpackMenu } from '../ui/menus/BackpackMenu.js';
+import { PokedexMenu } from '../ui/menus/PokedexMenu.js';
+import { PartyMenu } from '../ui/menus/PartyMenu.js';
+import { PlayerCardMenu } from '../ui/menus/PlayerCardMenu.js';
+import { OutfitMenu } from '../ui/menus/OutfitMenu.js';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -28,6 +36,15 @@ import {
   NPCDefinition
 } from 'poke-ter-shared';
 
+import { NPCRenderer } from '../../engine/rendering/NPCRenderer.js';
+import { PlayerRenderer } from '../../engine/rendering/PlayerRenderer.js';
+import { UIRenderer } from '../../engine/rendering/UIRenderer.js';
+
+import { BuildingManager } from '../../engine/buildings/BuildingManager.js';
+import { InteriorManager } from '../../engine/interiors/InteriorManager.js';
+import { TransitionManager } from '../../engine/doors/TransitionManager.js';
+import { DoorSystem } from '../../engine/doors/DoorSystem.js';
+
 export class OverworldScene implements Scene {
   private renderer: Renderer;
   private inputManager: InputManager;
@@ -40,6 +57,12 @@ export class OverworldScene implements Scene {
   private networkClient: NetworkClient | null;
   private audioManager: AudioManager | null = null;
   private debugMode = false;
+
+  // Pokémon-style Building & Interior System
+  private buildingManager: BuildingManager;
+  private interiorManager: InteriorManager;
+  private transitionManager: TransitionManager;
+  private doorSystem: DoorSystem;
   
   // Banner state
   private currentMapId: string = 'city';
@@ -60,11 +83,17 @@ export class OverworldScene implements Scene {
   private isDialogueActive: boolean = false;
   private activeDialogueLines: { speaker: string; text: string }[] = [];
   private currentDialogueIndex: number = -1;
+  private activeNPC: NPCDefinition | null = null;
 
   // Warp control
   private isWarping: boolean = false;
 
-  constructor(renderer: Renderer, inputManager: InputManager, networkClient: NetworkClient | null = null, audioManager: AudioManager | null = null) {
+  // Menus
+  private menuManager: MenuManager;
+  private clockManager: ClockManager;
+  private playTimeMs: number = 0;
+
+  constructor(renderer: Renderer, inputManager: InputManager, networkClient: NetworkClient | null = null, audioManager: AudioManager | null = null, profile?: import('poke-ter-shared').PlayerProfile) {
     this.renderer = renderer;
     this.inputManager = inputManager;
     this.networkClient = networkClient;
@@ -72,9 +101,25 @@ export class OverworldScene implements Scene {
     this.camera = new Camera();
     this.collisionSystem = new CollisionSystem();
     this.particleSystem = new ParticleSystem();
-    this.player = new Player(128 * 16, 128 * 16, inputManager, this.collisionSystem);
+    this.player = new Player(128 * 16, 128 * 16, inputManager, this.collisionSystem, profile);
     this.chunkManager = new ChunkManager(this.collisionSystem);
     this.uiManager = new UIManager(renderer.getContext());
+    this.menuManager = new MenuManager(inputManager, this.player, this.audioManager);
+    this.clockManager = new ClockManager();
+
+    // Initialize Building & Interior Systems
+    this.buildingManager = new BuildingManager(this.collisionSystem);
+    this.interiorManager = new InteriorManager(this.collisionSystem);
+    this.transitionManager = new TransitionManager();
+    this.doorSystem = new DoorSystem(
+      this.buildingManager,
+      this.interiorManager,
+      this.transitionManager,
+      this.audioManager,
+      this.networkClient,
+      this.player,
+      this.camera
+    );
     
     if (this.networkClient) {
       this.networkClient.on(PacketType.Welcome, this.onWelcome);
@@ -99,6 +144,9 @@ export class OverworldScene implements Scene {
     this.player.x = welcome.position.x;
     this.player.y = welcome.position.y;
     this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
+    if (welcome.serverStartTime) {
+      this.clockManager.setServerStartTime(welcome.serverStartTime);
+    }
     
     // Process initial other players
     this.otherPlayers.clear();
@@ -165,11 +213,23 @@ export class OverworldScene implements Scene {
   private setMap(mapId: string) {
     this.currentMapId = mapId;
     this.chunkManager.currentMapId = mapId;
-    this.chunkManager.clear(); // Clean slate to regenerate tiles and colliders for the new map!
-    const seed = this.chunkManager.currentSeed;
+    this.chunkManager.clear(); // Clean slate
 
-    // Load deterministic NPCs
-    this.npcs = getNPCsForMap(mapId, seed);
+    // If map is an interior map
+    if (mapId.includes('interior')) {
+      const interior = this.interiorManager.loadInterior(mapId);
+      this.npcs = interior ? interior.npcs : [];
+      this.doorSystem.isInInterior = true;
+    } else {
+      // Overworld Map
+      const seed = this.chunkManager.currentSeed;
+      this.doorSystem.setSeed(seed);
+      this.buildingManager.setMap(mapId, seed);
+      this.interiorManager.unloadCurrent();
+      this.doorSystem.isInInterior = false;
+
+      this.npcs = getNPCsForMap(mapId, seed);
+    }
 
     // Clear old npc colliders from collision system
     for (const c of this.npcColliders) {
@@ -198,6 +258,15 @@ export class OverworldScene implements Scene {
 
   private updateBackgroundMusic() {
     if (!this.audioManager) return;
+
+    if (this.doorSystem.isInInterior) {
+      const interior = this.interiorManager.getActiveInterior();
+      if (interior && interior.music) {
+        this.audioManager.playMusic(interior.music);
+        return;
+      }
+    }
+
     if (this.currentMapId === 'city') {
       this.audioManager.playMusic('/morning_in_the_village.mp3');
     } else {
@@ -214,13 +283,19 @@ export class OverworldScene implements Scene {
     const px = this.player.x;
     const py = this.player.y;
     
-    for (const npc of this.npcs) {
+    // Check interior NPCs or Overworld NPCs
+    const activeNpcs = this.doorSystem.isInInterior 
+      ? (this.interiorManager.getActiveInterior()?.npcs || [])
+      : this.npcs;
+
+    for (const npc of activeNpcs) {
       const dx = npc.position.x - px;
       const dy = npc.position.y - py;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // If we are close enough to interact (within ~1.5 tiles, 24 pixels)
-      if (distance < 24) {
+      // If we are close enough to interact (within ~1.5 tiles / 24 pixels in overworld, or ~2.8 tiles / 45 pixels in interiors to reach across counters)
+      const maxDistance = this.doorSystem.isInInterior ? 45 : 24;
+      if (distance < maxDistance) {
         const dir = this.player.direction;
         
         // Lenient directional check: are they facing towards the NPC?
@@ -249,34 +324,60 @@ export class OverworldScene implements Scene {
   }
 
   update(dt: number): void {
+    this.playTimeMs += dt;
+    this.clockManager.update(dt);
+    this.transitionManager.update(dt);
+    
+    // Process menu update
+    this.menuManager.update(dt);
+    
+    // Toggle menu
+    if (this.inputManager.justPressed('KeyE') && !this.isDialogueActive && !this.menuManager.isOpen()) {
+      this.menuManager.openMenu(new MainMenu((option) => {
+        if (option === 'Backpack') {
+          this.menuManager.openMenu(new BackpackMenu());
+        } else if (option === 'Data Log') {
+          this.menuManager.openMenu(new PokedexMenu(this.player));
+        } else if (option === 'Monster Party') {
+          this.menuManager.openMenu(new PartyMenu(this.player));
+        } else if (option === 'Player Card') {
+          this.menuManager.openMenu(new PlayerCardMenu(this.player, this.clockManager, () => this.playTimeMs));
+        } else if (option === 'Save') {
+          console.log('Save architecture ready.');
+        } else if (option === 'Exit') {
+          // Do nothing
+        }
+      }));
+    }
+
     envSystem.update(dt);
     this.particleSystem.update(dt);
     
-    // Spawn environmental particles (dust/leaves/snow)
-    if (Math.random() < 0.1) {
+    if (this.doorSystem.isInInterior) {
+      this.interiorManager.update(dt);
+    } else {
+      this.buildingManager.update(dt);
+    }
+
+    // Door system trigger checks
+    this.doorSystem.update();
+
+    // Spawn environmental particles
+    if (Math.random() < 0.1 && !this.doorSystem.isInInterior) {
       const pX = this.camera.getX() + Math.random() * GAME_WIDTH;
       const pY = this.camera.getY() + Math.random() * GAME_HEIGHT;
       if (this.lastBiomeName.toLowerCase().includes('forest')) {
-        this.particleSystem.emit(pX, pY, 1, ['#8bbf40', '#6aa32a'], 0.5, 20, 60, 'leaf'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#555555'], 2, 40, 100, 'bird');
+        this.particleSystem.emit(pX, pY, 1, ['#8bbf40', '#6aa32a'], 0.5, 20, 60, 'leaf');
       } else if (this.lastBiomeName.toLowerCase().includes('frozen') || this.lastBiomeName.toLowerCase().includes('tundra')) {
         this.particleSystem.emit(pX, pY, 1, ['#ffffff', '#e8f2f8'], 0.6, 15, 50, 'dust');
       } else if (this.lastBiomeName.toLowerCase().includes('city')) {
-        this.particleSystem.emit(pX, pY, 1, ['#888888', '#555555'], 0.2, 5, 80, 'dust'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#111111'], 2, 40, 100, 'bird');
+        this.particleSystem.emit(pX, pY, 1, ['#888888', '#555555'], 0.2, 5, 80, 'dust');
       }
     }
 
-    // Toggle debug mode with F3
+    // Toggle debug mode
     if (this.inputManager.justPressed('F3')) {
       this.debugMode = !this.debugMode;
-    }
-
-    // Toggle background music mute/unmute with 'KeyN'
-    if (this.inputManager.justPressed('KeyN') && this.audioManager) {
-      if (this.audioManager.musicVol > 0) {
-        this.audioManager.setMusicVolume(0);
-      } else {
-        this.audioManager.setMusicVolume(0.5);
-      }
     }
 
     // Dialogue State Machine
@@ -285,78 +386,114 @@ export class OverworldScene implements Scene {
         this.currentDialogueIndex++;
         if (this.currentDialogueIndex >= this.activeDialogueLines.length) {
           this.isDialogueActive = false;
+          if (this.activeNPC && (this.activeNPC.sprite === 'stylist' || this.activeNPC.name.includes('Stylist'))) {
+            this.menuManager.openMenu(new OutfitMenu(this.player, (updatedProfile) => {
+              if (this.networkClient) {
+                this.networkClient.setProfile(updatedProfile.name);
+              }
+            }));
+          }
+          this.activeNPC = null;
         }
       }
     } else {
-      // Normal update when no dialogue is blocking
-      this.player.update(dt);
+      // Player movement update (locked during transition)
+      if (!this.transitionManager.isTransitioning()) {
+        this.player.update(dt);
+      }
 
-      // Check for dialogue trigger
-      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
+      // Check NPC / Furniture interactions
+      if (!this.menuManager.isOpen() && (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter'))) {
+        // 1. Check NPC interaction
         const npc = this.getNPCInFront();
         if (npc) {
           this.isDialogueActive = true;
+          this.activeNPC = npc;
           this.activeDialogueLines = npc.dialogues[0];
           this.currentDialogueIndex = 0;
 
-          // Face NPC towards the player
           switch (this.player.direction) {
             case 'up': npc.direction = 'down'; break;
             case 'down': npc.direction = 'up'; break;
             case 'left': npc.direction = 'right'; break;
             case 'right': npc.direction = 'left'; break;
           }
+        } else if (this.doorSystem.isInInterior) {
+          // 2. Check Interior Furniture interaction
+          const pGx = Math.floor(this.player.getCenterX() / 16);
+          const pGy = Math.floor(this.player.getCenterY() / 16);
+          // Look 1 tile ahead based on player direction
+          let checkGx = pGx;
+          let checkGy = pGy;
+          if (this.player.direction === 'up') checkGy--;
+          else if (this.player.direction === 'down') checkGy++;
+          else if (this.player.direction === 'left') checkGx--;
+          else if (this.player.direction === 'right') checkGx++;
+
+          const furniture = this.interiorManager.getInteractableFurniture(checkGx, checkGy);
+          if (furniture && furniture.interactionText) {
+            this.isDialogueActive = true;
+            this.activeNPC = null;
+            const textLines = Array.isArray(furniture.interactionText) ? furniture.interactionText : [furniture.interactionText];
+            this.activeDialogueLines = textLines.map(t => ({ speaker: furniture.name, text: t }));
+            this.currentDialogueIndex = 0;
+
+            if (this.audioManager) {
+              this.audioManager.playSound('open');
+            }
+
+            // If Healing Machine, heal party
+            if (furniture.type === 'healing_machine' && this.player.party) {
+              for (const m of this.player.party) {
+                m.currentHp = m.maxHp;
+                m.status = 0;
+              }
+            }
+          }
         }
       }
 
-      // Gateway warping triggers
-      const gx = Math.floor(this.player.x / 16);
-      const gy = Math.floor(this.player.y / 16);
-      
-      if (this.networkClient && this.networkClient.isConnected() && !this.isWarping) {
-        // Step on portal tile (ID: 10) to warp
-        const currentTile = this.chunkManager.getTile(this.player.getCenterX(), this.player.getCenterY());
-        if (currentTile === 10) {
-          if (this.currentMapId === 'city') {
-            // North exit (gy < 100) -> Route 1
-            if (gy < 100) {
-              this.warpToMap('route_1');
+      // Gateway portal tile checks (Overworld portals)
+      if (!this.doorSystem.isInInterior) {
+        const gx = Math.floor(this.player.x / 16);
+        const gy = Math.floor(this.player.y / 16);
+        
+        if (!this.menuManager.isOpen() && this.networkClient && this.networkClient.isConnected() && !this.isWarping) {
+          const currentTile = this.chunkManager.getTile(this.player.getCenterX(), this.player.getCenterY());
+          if (currentTile === 10) {
+            if (this.currentMapId === 'city') {
+              if (gy < 100) this.warpToMap('route_1');
+              else if (gy > 140) this.warpToMap('route_2');
+              else if (gx > 140) this.warpToMap('route_3');
+              else if (gx < 110) this.warpToMap('route_4');
+            } else {
+              this.warpToMap('city');
             }
-            // South exit (gy > 140) -> Route 2
-            else if (gy > 140) {
-              this.warpToMap('route_2');
-            }
-            // East exit (gx > 140) -> Route 3
-            else if (gx > 140) {
-              this.warpToMap('route_3');
-            }
-            // West exit (gx < 110) -> Route 4
-            else if (gx < 110) {
-              this.warpToMap('route_4');
-            }
-          } else {
-            // On any route, portal warps back to city
-            this.warpToMap('city');
           }
         }
       }
     }
 
-    // Dynamic Biome Discovery Banner Tracker
-    const currentSeed = this.chunkManager.currentSeed;
-    const playerGx = Math.floor(this.player.x / 16);
-    const playerGy = Math.floor(this.player.y / 16);
-    const currentBiome = getBiomeAt(playerGx, playerGy, currentSeed);
-    
-    if (currentBiome.name !== this.lastBiomeName) {
-      this.lastBiomeName = currentBiome.name;
-      this.bannerAlpha = 1;
-      this.bannerTimer = 3.5;
+    // Dynamic Biome Discovery
+    if (!this.doorSystem.isInInterior) {
+      const currentSeed = this.chunkManager.currentSeed;
+      const playerGx = Math.floor(this.player.x / 16);
+      const playerGy = Math.floor(this.player.y / 16);
+      const currentBiome = getBiomeAt(playerGx, playerGy, currentSeed);
+      
+      if (currentBiome.name !== this.lastBiomeName) {
+        this.lastBiomeName = currentBiome.name;
+        this.bannerAlpha = 1;
+        this.bannerTimer = 3.5;
+      }
     }
 
-    // Sync input actions / position back to server
+    // Sync input actions back to server
     if (this.networkClient && this.networkClient.isConnected()) {
-      const keysRecord = this.inputManager.getKeysRecord();
+      let keysRecord = this.inputManager.getKeysRecord();
+      if (this.menuManager.isOpen() || this.isDialogueActive || this.transitionManager.isTransitioning()) {
+        keysRecord = {};
+      }
       this.networkClient.sendInput(keysRecord, this.player.direction, { x: this.player.x, y: this.player.y });
     }
 
@@ -368,25 +505,20 @@ export class OverworldScene implements Scene {
         if (this.bannerAlpha <= 0) {
           this.bannerAlpha = 0;
         } else {
-          this.bannerTimer = 0.01; // Fade step continue
+          this.bannerTimer = 0.01;
         }
       }
     }
 
-    // Map change testing (Press M to toggle manually in debug)
-    if (this.inputManager.justPressed('KeyM') && this.networkClient) {
-      const nextMap = this.currentMapId === 'city' ? 'route_1' : 'city';
-      this.warpToMap(nextMap);
+    // Update chunks if in overworld
+    if (!this.doorSystem.isInInterior) {
+      this.chunkManager.update(this.player.getCenterX(), this.player.getCenterY());
     }
 
-    // Update chunks around player
-    this.chunkManager.update(this.player.getCenterX(), this.player.getCenterY());
-
-    // Update camera to follow player
+    // Camera follow
     this.camera.follow(this.player.getCenterX(), this.player.getCenterY());
     this.camera.update(dt);
 
-    // Call input manager update at the VERY END of the frame
     this.inputManager.update();
   }
 
@@ -395,170 +527,106 @@ export class OverworldScene implements Scene {
     const offsetX = this.camera.getOffsetX();
     const offsetY = this.camera.getOffsetY();
 
-    // Clear with screen backdrop
     this.renderer.clear('#1a1a2e');
 
-    // Render chunks (ground pass — trees only show their low trunk stub here)
-    this.chunkManager.render(ctx, offsetX, offsetY);
-
-    // ===== Y-sorted overhang pass =====
-    // Tall tree canopies, buildings roofs, mountain tops, NPCs, other players, and the local player all get
-    // merged into one list sorted by their grounded Y position.
     type Drawable = { sortY: number; draw: () => void };
     const drawables: Drawable[] = [];
 
-    for (const overhang of this.chunkManager.getOverhangs(offsetX, offsetY)) {
+    if (this.doorSystem.isInInterior) {
+      // 1. Render Interior Map
+      this.interiorManager.render(ctx, offsetX, offsetY);
+
+      // Interior NPCs
+      for (const npc of this.npcs) {
+        const screenX = Math.round(npc.position.x - offsetX);
+        const screenY = Math.round(npc.position.y - offsetY);
+
+        drawables.push({
+          sortY: npc.position.y + 16,
+          draw: () => {
+            NPCRenderer.render(ctx, screenX, screenY, npc.direction, npc.position.x, npc.sprite, npc.name);
+          },
+        });
+      }
+
+      // Other interior players
+      for (const [, op] of this.otherPlayers) {
+        const screenX = Math.round(op.position.x - offsetX);
+        const screenY = Math.round(op.position.y - offsetY);
+
+        drawables.push({
+          sortY: op.position.y + 16,
+          draw: () => {
+            PlayerRenderer.render(ctx, screenX, screenY, op.direction as import('poke-ter-shared').Direction, false, 0, op.position.x, op.profile, op.username);
+          },
+        });
+      }
+
+      // Player
       drawables.push({
-        sortY: overhang.sortY,
-        draw: () => this.chunkManager.renderOverhang(ctx, overhang.type, overhang.screenX, overhang.screenY, overhang.gx, overhang.gy),
+        sortY: this.player.y + this.player.height,
+        draw: () => this.player.render(ctx, offsetX, offsetY),
       });
-    }
 
-    for (const npc of this.npcs) {
-      const screenX = Math.round(npc.position.x - offsetX);
-      const screenY = Math.round(npc.position.y - offsetY);
-      if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
+      drawables.sort((a, b) => a.sortY - b.sortY);
+      for (const d of drawables) d.draw();
 
+    } else {
+      // 2. Render Overworld Map
+      this.chunkManager.render(ctx, offsetX, offsetY);
+
+      // Overhangs
+      for (const overhang of this.chunkManager.getOverhangs(offsetX, offsetY)) {
+        drawables.push({
+          sortY: overhang.sortY,
+          draw: () => this.chunkManager.renderOverhang(ctx, overhang.type, overhang.screenX, overhang.screenY, overhang.gx, overhang.gy),
+        });
+      }
+
+      // Buildings
+      for (const bDrawable of this.buildingManager.getDrawables(ctx, offsetX, offsetY)) {
+        drawables.push(bDrawable);
+      }
+
+      // Overworld NPCs
+      for (const npc of this.npcs) {
+        const screenX = Math.round(npc.position.x - offsetX);
+        const screenY = Math.round(npc.position.y - offsetY);
+        if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
+
+        drawables.push({
+          sortY: npc.position.y + 16,
+          draw: () => {
+            NPCRenderer.render(ctx, screenX, screenY, npc.direction, npc.position.x, npc.sprite, npc.name);
+          },
+        });
+      }
+
+      // Other players
+      for (const [, op] of this.otherPlayers) {
+        const screenX = Math.round(op.position.x - offsetX);
+        const screenY = Math.round(op.position.y - offsetY);
+        if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
+
+        drawables.push({
+          sortY: op.position.y + 16,
+          draw: () => {
+            PlayerRenderer.render(ctx, screenX, screenY, op.direction as import('poke-ter-shared').Direction, false, 0, op.position.x, op.profile, op.username);
+          },
+        });
+      }
+
+      // Local player
       drawables.push({
-        sortY: npc.position.y + 16,
-        draw: () => {
-          // Draw npc shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-          ctx.beginPath();
-          ctx.ellipse(screenX + 8, screenY + 15, 7, 3, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Draw npc body
-          ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ff69b4' :
-                          npc.sprite === 'clerk' ? '#ffd700' :
-                          npc.sprite === 'clerk_blue' ? '#4169e1' :
-                          npc.sprite === 'clerk_route' ? '#ffa500' :
-                          npc.sprite === 'craftsman' ? '#8b4513' :
-                          npc.sprite === 'guide' ? '#32cd32' : '#708090';
-          ctx.fillRect(screenX + 3, screenY + 10, 10, 6); // pants
-          let breathOffset = Math.sin(envSystem.time * 0.003 + npc.position.x * 0.1) > 0.5 ? 1 : 0; const upperY = screenY + breathOffset; ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ffffff' : '#dddddd';
-          ctx.fillRect(screenX + 3, upperY + 4, 10, 6); // shirt
-          // head
-          ctx.fillStyle = '#ffccaa'; // skin
-          ctx.fillRect(screenX + 4, upperY - 2, 8, 6);
-          // hair/hat
-          ctx.fillStyle = npc.sprite === 'nurse_joy' ? '#ff69b4' : '#555555';
-          ctx.fillRect(screenX + 3, upperY - 4, 10, 3);
-          if (npc.direction === 'left') {
-              ctx.fillRect(screenX + 1, upperY - 2, 4, 2);
-          } else if (npc.direction === 'right') {
-              ctx.fillRect(screenX + 11, upperY - 2, 4, 2);
-          } else if (npc.direction === 'down') {
-              ctx.fillRect(screenX + 3, upperY - 2, 10, 2);
-          }
-
-          // eyes
-          ctx.fillStyle = '#000000';
-          const eyeSize = 2;
-          switch (npc.direction) {
-            case 'up':
-              break;
-            case 'down':
-              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
-              break;
-            case 'left':
-              ctx.fillRect(screenX + 4, upperY, eyeSize, eyeSize);
-              break;
-            case 'right':
-              ctx.fillRect(screenX + 10, upperY, eyeSize, eyeSize);
-              break;
-            default:
-              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
-              break;
-          }
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '6px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(npc.name, screenX + 8, upperY - 6);
-        },
+        sortY: this.player.y + this.player.height,
+        draw: () => this.player.render(ctx, offsetX, offsetY),
       });
+
+      drawables.sort((a, b) => a.sortY - b.sortY);
+      for (const d of drawables) d.draw();
+
+      this.particleSystem.render(ctx, offsetX, offsetY);
     }
-
-    for (const [, op] of this.otherPlayers) {
-      const screenX = Math.round(op.position.x - offsetX);
-      const screenY = Math.round(op.position.y - offsetY);
-      if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
-
-      drawables.push({
-        sortY: op.position.y + 16,
-        draw: () => {
-          // Draw other player shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-          ctx.beginPath();
-          ctx.ellipse(screenX + 8, screenY + 15, 7, 3, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Draw other player body
-          ctx.fillStyle = '#9e1e1e'; // pants
-          ctx.fillRect(screenX + 3, screenY + 10, 10, 6);
-          let breathOffset = Math.sin(envSystem.time * 0.003 + op.position.x * 0.1) > 0.5 ? 1 : 0; const upperY = screenY + breathOffset; ctx.fillStyle = '#e83a3a';
-          ctx.fillRect(screenX + 3, upperY + 4, 10, 6);
-          // head
-          ctx.fillStyle = '#ffccaa'; // skin
-          ctx.fillRect(screenX + 4, upperY - 2, 8, 6);
-          // hair/hat
-          ctx.fillStyle = '#222222'; // hat
-          ctx.fillRect(screenX + 3, upperY - 4, 10, 3);
-          if (op.direction === 'left' || op.direction === 'down-left' || op.direction === 'up-left') {
-              ctx.fillRect(screenX + 1, upperY - 2, 4, 2);
-          } else if (op.direction === 'right' || op.direction === 'down-right' || op.direction === 'up-right') {
-              ctx.fillRect(screenX + 11, upperY - 2, 4, 2);
-          } else if (op.direction === 'down') {
-              ctx.fillRect(screenX + 3, upperY - 2, 10, 2);
-          }
-
-          // eyes
-          ctx.fillStyle = '#000000';
-          const eyeSize = 2;
-          switch (op.direction) {
-            case 'up':
-              break;
-            case 'down':
-              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
-              break;
-            case 'left':
-            case 'down-left':
-            case 'up-left':
-              ctx.fillRect(screenX + 4, upperY, eyeSize, eyeSize);
-              break;
-            case 'right':
-            case 'down-right':
-            case 'up-right':
-              ctx.fillRect(screenX + 10, upperY, eyeSize, eyeSize);
-              break;
-            default:
-              ctx.fillRect(screenX + 5, upperY, eyeSize, eyeSize);
-              ctx.fillRect(screenX + 9, upperY, eyeSize, eyeSize);
-              break;
-          }
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '6px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(op.username, screenX + 8, upperY - 6);
-        },
-      });
-    }
-
-    drawables.push({
-      sortY: this.player.y + this.player.height,
-      draw: () => this.player.render(ctx, offsetX, offsetY),
-    });
-
-    drawables.sort((a, b) => a.sortY - b.sortY);
-    for (const d of drawables) d.draw();
-
-    // Render environmental particles over everything
-    this.particleSystem.render(ctx, offsetX, offsetY);
 
     // Dialogue Overlay UI
     if (this.isDialogueActive && this.activeDialogueLines.length > 0) {
@@ -568,18 +636,36 @@ export class OverworldScene implements Scene {
       }
     }
 
-    // Render location banner
-    if (this.bannerAlpha > 0) {
+    // Location Banner
+    if (this.bannerAlpha > 0 && !this.doorSystem.isInInterior) {
       const title = this.currentMapId === 'city' ? 'Permanent City' : 'Route ' + this.currentMapId.split('_')[1].toUpperCase();
       this.uiManager.drawLocationBanner(ctx, title, this.lastBiomeName, this.bannerAlpha);
+    } else if (this.doorSystem.isInInterior && this.interiorManager.getActiveInterior()) {
+      const activeInterior = this.interiorManager.getActiveInterior()!;
+      this.uiManager.drawLocationBanner(ctx, activeInterior.name, 'Building Interior', this.bannerAlpha);
     }
+
+    // Clock HUD
+    ctx.fillStyle = 'rgba(15, 20, 35, 0.85)';
+    ctx.fillRect(GAME_WIDTH - 64, 4, 60, 20);
+    ctx.strokeStyle = '#4deeea';
+    ctx.strokeRect(GAME_WIDTH - 64, 4, 60, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.clockManager.getTimeString(), GAME_WIDTH - 34, 15);
+
+    // Render Menus
+    this.menuManager.render(ctx);
+
+    // Render Transition Screen Fade Overlay
+    this.transitionManager.render(ctx);
 
     // Render debug info
     if (this.debugMode) {
       this.renderDebug(ctx);
     }
-
-    this.renderer.present();
   }
 
   private renderDebug(ctx: CanvasRenderingContext2D): void {

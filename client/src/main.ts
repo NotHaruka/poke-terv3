@@ -5,14 +5,15 @@ import { GameLoop } from './engine/GameLoop.js';
 import { InputManager } from './engine/InputManager.js';
 import { Renderer } from './engine/Renderer.js';
 import { SceneManager } from './engine/SceneManager.js';
-import { OverworldScene } from './game/scenes/OverworldScene.js';
+import { TitleScreenScene } from './game/scenes/TitleScreenScene.js';
 import { NetworkClient } from './game/network/NetworkClient.js';
 import { AudioManager } from './engine/AudioManager.js';
+import { InteriorRegistry } from './engine/interiors/InteriorRegistry.js';
 
 class PokeTerGame {
   private renderer: Renderer;
   private inputManager: InputManager;
-  private sceneManager: SceneManager;
+  public sceneManager: SceneManager; // Make public to access from scenes easily
   private gameLoop: GameLoop;
   private networkClient: NetworkClient | null = null;
   private audioManager: AudioManager;
@@ -23,9 +24,12 @@ class PokeTerGame {
     this.inputManager = new InputManager();
     this.audioManager = new AudioManager();
     this.sceneManager = new SceneManager();
+    
+    // Initialize registries
+    InteriorRegistry.init();
 
     // Attach input to canvas
-    const canvas = this.renderer['canvas'] as HTMLCanvasElement;
+    const canvas = this.renderer.getCanvas();
     canvas.tabIndex = 0;
     canvas.focus();
     this.inputManager.attach(canvas);
@@ -40,9 +44,9 @@ class PokeTerGame {
     this.networkClient = new NetworkClient('Player');
     this.tryConnect();
 
-    // Start with overworld scene
-    const overworld = new OverworldScene(this.renderer, this.inputManager, this.networkClient, this.audioManager);
-    this.sceneManager.push(overworld);
+    // Start with title scene
+    const title = new TitleScreenScene(this.renderer, this.inputManager, this.networkClient, this.audioManager);
+    this.sceneManager.push(title);
 
     // Start the game loop
     this.gameLoop.start();
@@ -59,10 +63,13 @@ class PokeTerGame {
 
   private update(dt: number): void {
     this.sceneManager.update(dt);
+    this.inputManager.update();
   }
 
   private render(): void {
+    this.renderer.clear();
     this.sceneManager.render();
+    this.renderer.present();
   }
 
   destroy(): void {

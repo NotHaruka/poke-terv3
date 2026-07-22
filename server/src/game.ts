@@ -7,6 +7,7 @@ export class GameState {
   private clients = new Map<string, ClientState>();
   private maps = new Map<string, MapInstance>();
   private mapEmptyTime = new Map<string, number>();
+  public serverStartTime: number = Date.now();
 
   constructor() {
     this.maps.set('city', {
@@ -53,6 +54,17 @@ export class GameState {
       id,
       seed,
       type: 'route',
+      players: new Set(),
+    };
+    this.maps.set(id, map);
+    return map;
+  }
+
+  public createInteriorMap(id: string): MapInstance {
+    const map: MapInstance = {
+      id,
+      seed: 0,
+      type: 'interior',
       players: new Set(),
     };
     this.maps.set(id, map);

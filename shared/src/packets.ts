@@ -1,5 +1,7 @@
 /** Strongly typed network packet definitions */
 
+import { PlayerProfile } from './types';
+
 export enum PacketType {
   // Connection
   Hello = 0,
@@ -56,6 +58,7 @@ export interface HelloPacket extends Packet {
   username: string;
   version: string;
   sessionId?: string;
+  profile?: PlayerProfile;
 }
 
 export interface WelcomePacket extends Packet {
@@ -65,6 +68,7 @@ export interface WelcomePacket extends Packet {
   players: PlayerSnapshot[];
   mapId: string;
   seed: number;
+  serverStartTime: number;
 }
 
 export interface DisconnectPacket extends Packet {
@@ -78,6 +82,7 @@ export interface PlayerSnapshot {
   username: string;
   position: { x: number; y: number };
   direction: string;
+  profile?: PlayerProfile;
 }
 
 export interface PlayerInputPacket extends Packet {
@@ -259,6 +264,9 @@ export interface SaveResponsePacket extends Packet {
 export interface MapChangeRequestPacket extends Packet {
   type: PacketType.MapChangeRequest;
   targetMapId: string; // e.g. 'city', 'route_1'
+  spawnX?: number;
+  spawnY?: number;
+  spawnDirection?: 'up' | 'down' | 'left' | 'right';
 }
 
 export interface MapChangeResponsePacket extends Packet {

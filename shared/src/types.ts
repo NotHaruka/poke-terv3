@@ -167,9 +167,33 @@ export interface MoveData {
   description: string;
 }
 
+export enum PlayerState {
+  Walking = 0,
+  Running = 1,
+  Interacting = 2,
+  Battling = 3,
+  MenuOpen = 4,
+  Cutscene = 5,
+}
+
+export interface PlayerProfile {
+  name: string;
+  bodyType: 'male' | 'female';
+  hairStyle: string;
+  hairColor: string;
+  skinTone: string;
+  eyeColor: string;
+  shirtColor: string;
+  pantsColor: string;
+  shoesColor: string;
+  hatType: string;
+  backpackType: string;
+}
+
 export interface PlayerData {
   id: string;
   username: string;
+  profile: PlayerProfile;
   position: Vec2;
   direction: Direction;
   speed: number;

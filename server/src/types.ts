@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { PlayerProfile } from 'poke-ter-shared';
 
 export interface MapInstance {
   id: string;
@@ -17,4 +18,5 @@ export interface ClientState {
   lastInputSeq: number;
   mapInstanceId: string;
   disconnectTimer?: NodeJS.Timeout;
+  profile?: PlayerProfile;
 }

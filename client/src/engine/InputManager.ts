@@ -65,6 +65,13 @@ export class InputManager {
     this._justReleased.clear();
   }
 
+  /** Consume an input so it is no longer processed this frame */
+  consume(code: string): void {
+    this.keys.delete(code);
+    this._justPressed.delete(code);
+    this._justReleased.delete(code);
+  }
+
   /** Check if a key is currently held down */
   isDown(code: string): boolean {
     return this.keys.has(code);

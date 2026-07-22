@@ -2,13 +2,13 @@ export type {
   Vec2, Direction, CardinalDirection, TileCoord, ChunkCoord,
   MonsterStats, MonsterSpecies, MonsterInstance,
   EvolutionRequirement,
-  PlayerData, InventoryItem, ItemData,
+  PlayerData, PlayerProfile, InventoryItem, ItemData,
   NPCDefinition, DialogueLine, TileData, ChunkData, EncounterTable,
   MoveData,
 } from './types.js';
 export {
   MonsterType, Nature, Stat, GrowthRate, EvolutionMethod,
-  StatusEffect, MoveCategory, ItemCategory, EncounterType,
+  StatusEffect, MoveCategory, ItemCategory, EncounterType, PlayerState
 } from './types.js';
 export {
   TILE_SIZE, CHUNK_SIZE, CHUNK_PIXELS, GAME_WIDTH, GAME_HEIGHT,

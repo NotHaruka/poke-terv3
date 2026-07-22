@@ -37,7 +37,7 @@ export const TILE_PORTAL = 10;
 
 // ===== Low-level deterministic noise =====
 
-function hash2D(x: number, y: number, seed: number): number {
+export function hash2D(x: number, y: number, seed: number): number {
   let h = x * 374761393 + y * 668265263 + seed * 982451653;
   h = (h ^ (h >> 13)) * 1274126177;
   h = h ^ (h >> 16);
@@ -689,12 +689,7 @@ export class LandmarkGenerator {
       const dy = gy - ly;
       const distSq = dx * dx + dy * dy;
       if (distSq <= 16) {
-        if (distSq > 9 && distSq <= 16) {
-          if (hash2D(gx, gy, seed) > 0.28) return TILE_BUILDING_WALL;
-          return TILE_VOID;
-        }
-        if (dx === 0 && dy === 0) return TILE_PORTAL;
-        return TILE_BUILDING_FLOOR;
+        return TILE_PATH;
       }
     } else if (mapId === 'route_3') {
       const lx = 130;
@@ -702,12 +697,7 @@ export class LandmarkGenerator {
       const dx = gx - lx;
       const dy = gy - ly;
       if (dx >= -3 && dx <= 3 && dy >= -2 && dy <= 2) {
-        if (dx === -3 || dx === 3 || dy === -2 || dy === 2) {
-          if (dx === 0 && dy === 2) return TILE_DOOR;
-          if (hash2D(gx, gy, seed) > 0.25) return TILE_BUILDING_WALL;
-          return TILE_TALL_GRASS;
-        }
-        return TILE_BUILDING_FLOOR;
+        return TILE_PATH;
       }
     } else if (mapId === 'route_4') {
       const lx = 105;
@@ -1051,6 +1041,7 @@ export function getCityTile(gx: number, gy: number): number {
     return TILE_TREE;
   }
 
+  // Gates / Portals
   if (gx >= 126 && gx <= 128 && gy >= 95 && gy <= 97) {
     if (gx === 127 && gy === 96) return TILE_PORTAL;
     return TILE_PATH;
@@ -1069,50 +1060,21 @@ export function getCityTile(gx: number, gy: number): number {
   }
 
   const isMainRoad = (gy >= 118 && gy <= 124) || (gx >= 124 && gx <= 130);
-
-  if (gx >= 112 && gx <= 122 && gy >= 104 && gy <= 112) {
-    if (gy === 112 && gx === 117) return TILE_DOOR;
-    if (gy === 112) return TILE_BUILDING_WALL;
-    if (gx === 112 || gx === 122 || gy === 104) return TILE_BUILDING_WALL;
-    return TILE_BUILDING_FLOOR;
-  }
-
-  if (gx >= 132 && gx <= 142 && gy >= 104 && gy <= 112) {
-    if (gy === 112 && gx === 137) return TILE_DOOR;
-    if (gy === 112) return TILE_BUILDING_WALL;
-    if (gx === 132 || gx === 142 || gy === 104) return TILE_BUILDING_WALL;
-    return TILE_BUILDING_FLOOR;
-  }
-
-  if (gx >= 112 && gx <= 122 && gy >= 132 && gy <= 140) {
-    if (gy === 140 && gx === 117) return TILE_DOOR;
-    if (gy === 140) return TILE_BUILDING_WALL;
-    if (gx === 112 || gx === 122 || gy === 132) return TILE_BUILDING_WALL;
-    return TILE_BUILDING_FLOOR;
-  }
-
-  if (gx >= 132 && gx <= 142 && gy >= 132 && gy <= 140) {
-    if (gy === 140 && gx === 137) return TILE_DOOR;
-    if (gy === 140) return TILE_BUILDING_WALL;
-    if (gx === 132 || gx === 142 || gy === 132) return TILE_BUILDING_WALL;
-    return TILE_BUILDING_FLOOR;
-  }
+  if (isMainRoad) return TILE_PATH;
 
   if (isInsideCity) {
     const isNearStructure = 
-      (gx >= 110 && gx <= 124 && gy >= 102 && gy <= 114) || 
-      (gx >= 130 && gx <= 144 && gy >= 102 && gy <= 114) || 
-      (gx >= 110 && gx <= 124 && gy >= 130 && gy <= 142) || 
-      (gx >= 130 && gx <= 144 && gy >= 130 && gy <= 142);
+      (gx >= 105 && gx <= 125 && gy >= 96 && gy <= 148) || 
+      (gx >= 129 && gx <= 148 && gy >= 96 && gy <= 148) ||
+      (gx >= 122 && gx <= 132 && gy >= 109 && gy <= 117);
 
-    if (!isMainRoad && !isNearStructure) {
+    if (!isNearStructure) {
       if (hash2D(gx, gy, 888) > 0.72) {
         return TILE_TREE;
       }
     }
   }
 
-  if (isMainRoad) return TILE_PATH;
   return TILE_GRASS;
 }
 
@@ -1333,6 +1295,7 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
   }
 
   if (townType === 0) {
+    // Lakeside Town
     for (let y = 1; y <= 14; y++) {
       if (y === 7) continue;
       for (let x = 12; x <= 14; x++) {
@@ -1340,31 +1303,16 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
       }
     }
 
+    // Pier onto water
     for (let x = 8; x <= 14; x++) {
-      tiles[7][x] = TILE_BUILDING_FLOOR;
+      tiles[7][x] = TILE_PATH;
     }
 
-    for (let y = 2; y <= 5; y++) {
-      for (let x = 2; x <= 6; x++) {
-        if (y === 2 || y === 5 || x === 2 || x === 6) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else {
-          tiles[y][x] = TILE_BUILDING_FLOOR;
-        }
-      }
+    // Paths connecting building doors to main road
+    tiles[6][3] = TILE_PATH;
+    for (let y = 8; y <= 13; y++) {
+      tiles[y][3] = TILE_PATH;
     }
-    tiles[5][4] = TILE_DOOR;
-
-    for (let y = 10; y <= 13; y++) {
-      for (let x = 2; x <= 5; x++) {
-        if (y === 10 || y === 13 || x === 2 || x === 5) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else {
-          tiles[y][x] = TILE_BUILDING_FLOOR;
-        }
-      }
-    }
-    tiles[10][4] = TILE_DOOR;
 
     tiles[2][8] = TILE_TREE;
     tiles[13][8] = TILE_TREE;
@@ -1372,43 +1320,11 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     tiles[11][10] = TILE_TALL_GRASS;
 
   } else if (townType === 1) {
-    for (let y = 2; y <= 5; y++) {
-      for (let x = 2; x <= 6; x++) {
-        if (y === 2 || y === 5 || x === 2 || x === 6) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else {
-          tiles[y][x] = TILE_BUILDING_FLOOR;
-        }
-      }
-    }
-    tiles[5][4] = TILE_DOOR;
-
-    for (let y = 2; y <= 5; y++) {
-      for (let x = 9; x <= 13; x++) {
-        if (y === 2 || y === 5 || x === 9 || x === 13) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else {
-          tiles[y][x] = TILE_BUILDING_FLOOR;
-        }
-      }
-    }
-    tiles[5][11] = TILE_DOOR;
-
-    for (let y = 10; y <= 13; y++) {
-      for (let x = 2; x <= 6; x++) {
-        if (y === 10 || x === 2 || x === 6) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else if (y === 13) {
-          if (x === 4) {
-            tiles[y][x] = TILE_PATH;
-          } else {
-            tiles[y][x] = TILE_BUILDING_WALL;
-          }
-        } else {
-          tiles[y][x] = TILE_TALL_GRASS;
-        }
-      }
-    }
+    // Forest Grove Town
+    // Paths connecting building doors to main road
+    tiles[6][3] = TILE_PATH;
+    tiles[5][10] = TILE_PATH;
+    tiles[6][10] = TILE_PATH;
 
     tiles[10][9] = TILE_TREE;
     tiles[11][13] = TILE_TREE;
@@ -1416,41 +1332,20 @@ function stampTown(tiles: number[][], cx: number, cy: number, seed: number): voi
     tiles[13][13] = TILE_TREE;
 
   } else {
-    for (let y = 2; y <= 5; y++) {
-      for (let x = 2; x <= 7; x++) {
-        if (y === 2 || y === 5 || x === 2 || x === 7) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else {
-          tiles[y][x] = TILE_BUILDING_FLOOR;
-        }
-      }
+    // Mountain Summit Mining Camp
+    // Paths connecting building doors to main road
+    tiles[6][4] = TILE_PATH;
+    for (let y = 8; y <= 12; y++) {
+      tiles[y][10] = TILE_PATH;
     }
-    tiles[5][4] = TILE_DOOR;
 
-    for (let y = 10; y <= 13; y++) {
-      for (let x = 9; x <= 13; x++) {
-        if (y === 10 || y === 13 || x === 9 || x === 13) {
-          tiles[y][x] = TILE_BUILDING_WALL;
-        } else {
-          tiles[y][x] = TILE_BUILDING_FLOOR;
-        }
-      }
-    }
-    tiles[10][11] = TILE_DOOR;
-
+    // Portal / Outpost platform
     for (let y = 3; y <= 5; y++) {
       for (let x = 9; x <= 11; x++) {
         tiles[y][x] = TILE_PATH;
       }
     }
     tiles[4][10] = TILE_PORTAL;
-
-    for (let x = 2; x <= 6; x++) {
-      tiles[10][x] = TILE_BUILDING_WALL;
-      tiles[13][x] = TILE_BUILDING_WALL;
-    }
-    tiles[11][2] = TILE_BUILDING_WALL;
-    tiles[12][2] = TILE_BUILDING_WALL;
 
     tiles[12][4] = TILE_TALL_GRASS;
   }
@@ -1542,53 +1437,6 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
   const npcs: NPCDefinition[] = [];
 
   if (mapId === 'city') {
-    npcs.push({
-      id: 1,
-      name: 'Nurse Joy',
-      sprite: 'nurse_joy',
-      position: { x: 117 * 16, y: 108 * 16 },
-      direction: 'down',
-      dialogues: [[
-        { speaker: 'Nurse Joy', text: "Hello! Welcome to the permanent FlashTrainer City Center." },
-        { speaker: 'Nurse Joy', text: "I have restored your party to full health! Rest well before your expedition." }
-      ]]
-    });
-
-    npcs.push({
-      id: 2,
-      name: 'Mart Clerk',
-      sprite: 'clerk',
-      position: { x: 137 * 16, y: 108 * 16 },
-      direction: 'down',
-      dialogues: [[
-        { speaker: 'Mart Clerk', text: "Welcome to the Poké Mart! We're stocked up with essential supplies." },
-        { speaker: 'Mart Clerk', text: "Take some potions and Pokeballs for your journey into the wild." }
-      ]]
-    });
-
-    npcs.push({
-      id: 3,
-      name: 'Storage Clerk',
-      sprite: 'clerk_blue',
-      position: { x: 117 * 16, y: 136 * 16 },
-      direction: 'down',
-      dialogues: [[
-        { speaker: 'Storage Clerk', text: "Welcome to the Storage Vault. Your items and caught monsters are safe here!" }
-      ]]
-    });
-
-    npcs.push({
-      id: 4,
-      name: 'Crafting Expert',
-      sprite: 'craftsman',
-      position: { x: 137 * 16, y: 136 * 16 },
-      direction: 'down',
-      dialogues: [[
-        { speaker: 'Crafting Expert', text: "Hey there, Trainer! Bring back raw materials from the expeditions." },
-        { speaker: 'Crafting Expert', text: "I can help you craft rare items and upgrades using biome resources!" }
-      ]]
-    });
-
     npcs.push({
       id: 5,
       name: 'Travel Guide',

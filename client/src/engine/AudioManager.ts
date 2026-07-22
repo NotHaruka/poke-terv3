@@ -145,5 +145,141 @@ export class AudioManager {
       this.currentAudio.volume = this.musicVol;
     }
   }
+
+  playSFX(type: 'open' | 'close' | 'select' | 'cancel' | 'bump'): void {
+    const context = this.getCtx();
+    if (!context || context.state === 'suspended') return;
+    
+    const osc = context.createOscillator();
+    const gainNode = context.createGain();
+    
+    osc.connect(gainNode);
+    gainNode.connect(context.destination);
+    
+    const now = context.currentTime;
+    
+    // SFX volume scaling
+    const vol = this.sfxVol * 0.2;
+    
+    switch (type) {
+      case 'open':
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(vol, now + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        break;
+      case 'close':
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(440, now + 0.1);
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(vol, now + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        break;
+      case 'select':
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.setValueAtTime(800, now + 0.05);
+        gainNode.gain.setValueAtTime(vol * 0.5, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+        break;
+      case 'cancel':
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(300, now);
+        gainNode.gain.setValueAtTime(vol * 0.5, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        break;
+      case 'bump':
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+        gainNode.gain.setValueAtTime(vol, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+        break;
+    }
+  }
+
+  playSound(sound: string, volume = 0.5): void {
+    if (this.sfxVol <= 0) return;
+
+    const lower = sound.toLowerCase();
+    if (lower === 'open' || lower.includes('open')) {
+      this.playSFX('open');
+      return;
+    }
+    if (lower === 'close' || lower.includes('close')) {
+      this.playSFX('close');
+      return;
+    }
+    if (lower === 'select' || lower.includes('select') || lower.includes('move')) {
+      this.playSFX('select');
+      return;
+    }
+    if (lower === 'cancel' || lower.includes('cancel')) {
+      this.playSFX('cancel');
+      return;
+    }
+    if (lower === 'bump' || lower.includes('bump')) {
+      this.playSFX('bump');
+      return;
+    }
+
+    if (lower.includes('fanfare')) {
+      this.playFanfare();
+      return;
+    }
+
+    try {
+      const audio = new Audio(sound);
+      audio.volume = Math.max(0, Math.min(1, volume * this.sfxVol));
+      audio.play().catch(() => {
+        this.playSFX('select');
+      });
+    } catch {
+      this.playSFX('select');
+    }
+  }
+
+  private playFanfare(): void {
+    const context = this.getCtx();
+    if (!context || context.state === 'suspended') return;
+
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    const now = context.currentTime;
+    const vol = this.sfxVol * 0.2;
+
+    notes.forEach((freq, idx) => {
+      const osc = context.createOscillator();
+      const gainNode = context.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+
+      osc.connect(gainNode);
+      gainNode.connect(context.destination);
+
+      const startTime = now + idx * 0.1;
+      const duration = idx === notes.length - 1 ? 0.3 : 0.08;
+
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(vol, startTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    });
+  }
 }
 
