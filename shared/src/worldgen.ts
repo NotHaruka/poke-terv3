@@ -48,6 +48,12 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** GLSL-style edge smoothstep: 0 below edge0, 1 above edge1, smooth between. */
+function smoothstepEdge(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return smoothstep(t);
+}
+
 /** Bilinear-interpolated value noise, continuous and smooth (not per-tile static). */
 function valueNoise2D(x: number, y: number, seed: number): number {
   const xi = Math.floor(x);
@@ -921,44 +927,22 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
   const temp = TemperatureGenerator.getTemperature(gx, gy, seed, elevation);
   const biomeId = BiomeGenerator.determineBiome(elevation, moisture, temp);
 
-  if (biomeId === 'mountain') {
-    const biome: BiomeInfo = {
-      id: 'mountain',
-      name: 'Craggy Highlands',
-      bgColor: '#5a4a35',
-      grassColor: '#6c5b45',
-      treeColor: '#2d4d2d',
-      tallGrassColor: '#4a7a4a',
-    };
-    biomeCache[cacheKey] = biome;
-    return biome;
-  }
+  // ===== Continuous color blending =====
+  // Rather than hard-switching to a flat color the instant a threshold is
+  // crossed, every tile blends smoothly across TWO independent axes:
+  //   - mountainFactor: how far into "high elevation" this tile is
+  //   - coldFactor: how far into "cold" this tile is
+  // The four corner palettes (normal / mountain / tundra / ice_peak) sit at
+  // the extremes of that 2D space, and every tile bilinearly interpolates
+  // between whichever corners it's nearest — so a tile just below the
+  // mountain threshold is mostly normal-colored with a faint rocky tint,
+  // not a hard line between "green" and "brown". id/name still switch at
+  // the same discrete thresholds as before (for the banner/gameplay logic),
+  // only the visual color is continuous now.
 
-  if (biomeId === 'ice_peak') {
-    const biome: BiomeInfo = {
-      id: 'ice_peak',
-      name: 'Frozen Summit',
-      bgColor: '#c9dbe8',
-      grassColor: '#dbe9f2',
-      treeColor: '#4a6b7a',
-      tallGrassColor: '#a8c8d8',
-    };
-    biomeCache[cacheKey] = biome;
-    return biome;
-  }
-
-  if (biomeId === 'tundra') {
-    const biome: BiomeInfo = {
-      id: 'tundra',
-      name: 'Frostbound Tundra',
-      bgColor: '#e2edf2',
-      grassColor: '#eef5f8',
-      treeColor: '#6b8a9a',
-      tallGrassColor: '#b8d4e0',
-    };
-    biomeCache[cacheKey] = biome;
-    return biome;
-  }
+  const MOUNTAIN_THRESHOLD = 0.82;
+  const mountainFactor = smoothstepEdge(MOUNTAIN_THRESHOLD - 0.09, MOUNTAIN_THRESHOLD, elevation);
+  const coldFactor = 1 - smoothstepEdge(0.08, 0.20, temp); // 1 when temp<=0.08 (cold), 0 when temp>=0.20
 
   const cDesertBg = '#d8c292';
   const cDesertGrass = '#e4d2a3';
@@ -975,47 +959,69 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
   const cForestTree = '#1a4a0e';
   const cForestTallGrass = '#2d5a1e';
 
-  let bgColor = cPlainsBg;
-  let grassColor = cPlainsGrass;
-  let treeColor = cPlainsTree;
-  let tallGrassColor = cPlainsTallGrass;
+  // Base "normal" palette — same moisture-driven forest/plains/desert
+  // blend as before, just always computed rather than gated behind a
+  // biomeId check.
+  let normalBg = cPlainsBg, normalGrass = cPlainsGrass, normalTree = cPlainsTree, normalTallGrass = cPlainsTallGrass;
 
   if (moisture <= 0.22) {
-    bgColor = cDesertBg;
-    grassColor = cDesertGrass;
-    treeColor = cDesertTree;
-    tallGrassColor = cDesertTallGrass;
+    normalBg = cDesertBg; normalGrass = cDesertGrass; normalTree = cDesertTree; normalTallGrass = cDesertTallGrass;
   } else if (moisture >= 0.58) {
-    bgColor = cForestBg;
-    grassColor = cForestGrass;
-    treeColor = cForestTree;
-    tallGrassColor = cForestTallGrass;
+    normalBg = cForestBg; normalGrass = cForestGrass; normalTree = cForestTree; normalTallGrass = cForestTallGrass;
   } else if (moisture < 0.38) {
     const t = (moisture - 0.22) / (0.38 - 0.22);
-    bgColor = lerpColor(cDesertBg, cPlainsBg, t);
-    grassColor = lerpColor(cDesertGrass, cPlainsGrass, t);
-    treeColor = lerpColor(cDesertTree, cPlainsTree, t);
-    tallGrassColor = lerpColor(cDesertTallGrass, cPlainsTallGrass, t);
+    normalBg = lerpColor(cDesertBg, cPlainsBg, t);
+    normalGrass = lerpColor(cDesertGrass, cPlainsGrass, t);
+    normalTree = lerpColor(cDesertTree, cPlainsTree, t);
+    normalTallGrass = lerpColor(cDesertTallGrass, cPlainsTallGrass, t);
   } else if (moisture < 0.42) {
-    bgColor = cPlainsBg;
-    grassColor = cPlainsGrass;
-    treeColor = cPlainsTree;
-    tallGrassColor = cPlainsTallGrass;
+    // stays plains
   } else {
     const t = (moisture - 0.42) / (0.58 - 0.42);
-    bgColor = lerpColor(cPlainsBg, cForestBg, t);
-    grassColor = lerpColor(cPlainsGrass, cForestGrass, t);
-    treeColor = lerpColor(cPlainsTree, cForestTree, t);
-    tallGrassColor = lerpColor(cPlainsTallGrass, cForestTallGrass, t);
+    normalBg = lerpColor(cPlainsBg, cForestBg, t);
+    normalGrass = lerpColor(cPlainsGrass, cForestGrass, t);
+    normalTree = lerpColor(cPlainsTree, cForestTree, t);
+    normalTallGrass = lerpColor(cPlainsTallGrass, cForestTallGrass, t);
   }
+
+  // Mountain palette (Craggy Highlands)
+  const mtnBg = '#5a4a35', mtnGrass = '#6c5b45', mtnTree = '#2d4d2d', mtnTallGrass = '#4a7a4a';
+  // Tundra palette (Frostbound Tundra)
+  const tunBg = '#e2edf2', tunGrass = '#eef5f8', tunTree = '#6b8a9a', tunTallGrass = '#b8d4e0';
+  // Ice peak palette (Frozen Summit)
+  const iceBg = '#c9dbe8', iceGrass = '#dbe9f2', iceTree = '#4a6b7a', iceTallGrass = '#a8c8d8';
+
+  // Bilinear blend: warm-row = lerp(normal, mountain, mountainFactor),
+  // cold-row = lerp(tundra, ice_peak, mountainFactor), then blend the two
+  // rows by coldFactor.
+  const warmBg = lerpColor(normalBg, mtnBg, mountainFactor);
+  const warmGrass = lerpColor(normalGrass, mtnGrass, mountainFactor);
+  const warmTree = lerpColor(normalTree, mtnTree, mountainFactor);
+  const warmTallGrass = lerpColor(normalTallGrass, mtnTallGrass, mountainFactor);
+
+  const coldRowBg = lerpColor(tunBg, iceBg, mountainFactor);
+  const coldRowGrass = lerpColor(tunGrass, iceGrass, mountainFactor);
+  const coldRowTree = lerpColor(tunTree, iceTree, mountainFactor);
+  const coldRowTallGrass = lerpColor(tunTallGrass, iceTallGrass, mountainFactor);
+
+  const bgColor = lerpColor(warmBg, coldRowBg, coldFactor);
+  const grassColor = lerpColor(warmGrass, coldRowGrass, coldFactor);
+  const treeColor = lerpColor(warmTree, coldRowTree, coldFactor);
+  const tallGrassColor = lerpColor(warmTallGrass, coldRowTallGrass, coldFactor);
 
   const result: BiomeInfo = {
     id: biomeId,
-    name: biomeId === 'forest' ? 'Ancient Grove' : biomeId === 'desert' ? 'Sandy Wasteland' : 'Grassland Plains',
+    name:
+      biomeId === 'forest' ? 'Ancient Grove' :
+      biomeId === 'desert' ? 'Sandy Wasteland' :
+      biomeId === 'mountain' ? 'Craggy Highlands' :
+      biomeId === 'ice_peak' ? 'Frozen Summit' :
+      biomeId === 'tundra' ? 'Frostbound Tundra' :
+      'Grassland Plains',
     bgColor,
     grassColor,
     treeColor,
-    tallGrassColor
+    tallGrassColor,
   };
   biomeCache[cacheKey] = result;
   return result;

@@ -3,6 +3,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
@@ -58,7 +59,11 @@ async function startServer() {
   });
 
   // Vite integration
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.resolve(process.cwd(), 'dist/client');
+  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
+
+  if (process.env.NODE_ENV !== 'production' || !hasDist) {
+    console.log(`[Poke-ter Server] Starting Vite dev middleware (production=${process.env.NODE_ENV === 'production'}, hasDist=${hasDist})`);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -66,7 +71,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(process.cwd(), 'dist/client');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
