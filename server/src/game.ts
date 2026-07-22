@@ -98,6 +98,26 @@ export class GameState {
     return undefined;
   }
 
+  public updateClientId(oldId: string, newId: string): void {
+    const client = this.clients.get(oldId);
+    if (!client) return;
+    
+    // Check if newId already in map (edge case cleanup)
+    const existing = this.clients.get(newId);
+    if (existing && existing !== client) {
+       this.removeClient(newId);
+    }
+
+    const map = this.maps.get(client.mapInstanceId);
+    if (map) {
+      map.players.delete(oldId);
+      map.players.add(newId);
+    }
+    this.clients.delete(oldId);
+    client.id = newId;
+    this.clients.set(newId, client);
+  }
+
   public markClientDisconnected(playerId: string): void {
     const client = this.clients.get(playerId);
     if (!client) return;

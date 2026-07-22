@@ -5,8 +5,9 @@ import {
   PlayerInputPacket, PlayerMovePacket, PlayerPosPacket, ChunkRequestPacket, ChunkDataPacket,
   PlayerJoinPacket, PingPacket, PongPacket,
   ChunkSnapshot, generateChunkTiles, MapChangeRequestPacket, MapChangeResponsePacket, PlayerLeavePacket,
-  findSafeSpawn, PLAYER_SPRINT_SPEED, PLAYER_WALK_SPEED
+  findSafeSpawn, PLAYER_SPRINT_SPEED, PLAYER_WALK_SPEED, SaveRequestPacket, SaveResponsePacket, PlayerData
 } from 'poke-ter-shared';
+import { savePlayerData, loadPlayerData } from './saveManager.js';
 
 export function handlePacket(gameState: GameState, client: ClientState, packet: AnyPacket): void {
   switch (packet.type) {
@@ -24,6 +25,9 @@ export function handlePacket(gameState: GameState, client: ClientState, packet: 
       break;
     case PacketType.MapChangeRequest:
       handleMapChangeRequest(gameState, client, packet as MapChangeRequestPacket);
+      break;
+    case PacketType.SaveRequest:
+      handleSaveRequest(gameState, client, packet as SaveRequestPacket);
       break;
     default:
       console.log(`[?] Unknown packet type: ${packet.type}`);
@@ -57,13 +61,42 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
           username: client.username,
           position: client.position,
           direction: client.direction,
-          profile: client.profile
+          profile: client.profile,
+          activeMonster: getActiveMonster(client)
         },
         timestamp: Date.now(),
       } as PlayerJoinPacket, client.id);
       return; // Stop here, no need to send Welcome again
+    } else {
+      // It's a fresh connection with an existing sessionId (server restarted)
+      console.log(`[+] ${packet.sessionId} connected with existing ID`);
+      gameState.updateClientId(client.id, packet.sessionId);
+      
+      const loadedSave = loadPlayerData(packet.sessionId);
+      if (loadedSave) {
+         console.log(`[+] Loaded save file for ${packet.sessionId}`);
+         client.playerData = loadedSave;
+         if (loadedSave.profile) client.profile = loadedSave.profile;
+         if (loadedSave.position) client.position = loadedSave.position;
+         if (loadedSave.direction) client.direction = loadedSave.direction;
+         if (loadedSave.currentMap) client.mapInstanceId = loadedSave.currentMap;
+      }
     }
   }
+
+  // Ensure map exists if loaded from save
+  let map = gameState.getMap(client.mapInstanceId);
+  if (!map) {
+      if (client.mapInstanceId.startsWith('route_')) {
+          map = gameState.createRouteMap(client.mapInstanceId);
+      } else if (client.mapInstanceId.includes('interior')) {
+          map = gameState.createInteriorMap(client.mapInstanceId);
+      } else {
+          client.mapInstanceId = 'city';
+          map = gameState.getMap('city')!;
+      }
+  }
+  map.players.add(client.id);
 
   // Compile active players for the welcome list (only in the same map)
   const players = gameState.getClientsInMap(client.mapInstanceId)
@@ -73,10 +106,9 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
       username: c.username,
       position: c.position,
       direction: c.direction,
-      profile: c.profile
+      profile: c.profile,
+      activeMonster: getActiveMonster(c)
     }));
-
-  const map = gameState.getMap(client.mapInstanceId)!;
 
   gameState.send(client, {
     type: PacketType.Welcome,
@@ -87,6 +119,7 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
     seed: map.seed,
     serverStartTime: gameState.serverStartTime,
     timestamp: Date.now(),
+    playerData: client.playerData
   } as WelcomePacket);
 
   // Notify other players in the same map
@@ -97,12 +130,27 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
       username: client.username,
       position: client.position,
       direction: client.direction,
-      profile: client.profile
+      profile: client.profile,
+      activeMonster: getActiveMonster(client)
     },
     timestamp: Date.now(),
   } as PlayerJoinPacket, client.id);
 
   console.log(`  → ${client.username} (${client.id}) joined`);
+}
+
+function getActiveMonster(client: ClientState) {
+    if (!client.playerData || !client.playerData.party || client.playerData.party.length === 0) return undefined;
+    const monster = client.playerData.party[0];
+    return {
+        speciesId: monster.speciesId,
+        level: monster.level,
+        currentHp: monster.currentHp,
+        maxHp: monster.maxHp,
+        stats: monster.stats,
+        status: monster.status,
+        nickname: monster.nickname
+    };
 }
 
 function handlePlayerInput(gameState: GameState, client: ClientState, packet: PlayerInputPacket): void {
@@ -302,7 +350,8 @@ function handleMapChangeRequest(gameState: GameState, client: ClientState, packe
       username: c.username,
       position: c.position,
       direction: c.direction,
-      profile: c.profile
+      profile: c.profile,
+      activeMonster: getActiveMonster(c)
     }));
 
   gameState.send(client, {
@@ -322,8 +371,51 @@ function handleMapChangeRequest(gameState: GameState, client: ClientState, packe
       username: client.username,
       position: client.position,
       direction: client.direction,
-      profile: client.profile
+      profile: client.profile,
+      activeMonster: getActiveMonster(client)
     },
     timestamp: Date.now(),
   } as PlayerJoinPacket, client.id);
+}
+
+function handleSaveRequest(gameState: GameState, client: ClientState, packet: SaveRequestPacket): void {
+  try {
+    const data: PlayerData = JSON.parse(packet.data);
+    
+    // Update server's state
+    client.playerData = data;
+    if (data.profile) client.profile = data.profile;
+    client.position = data.position;
+    client.direction = data.direction;
+    client.mapInstanceId = data.currentMap;
+    
+    savePlayerData(client.id, data);
+    
+    // Check if monster changed and we need to update others
+    gameState.broadcastToMap(client.mapInstanceId, {
+      type: PacketType.PlayerJoin, 
+      player: {
+        id: client.id,
+        username: client.username,
+        position: client.position,
+        direction: client.direction,
+        profile: client.profile,
+        activeMonster: getActiveMonster(client)
+      },
+      timestamp: Date.now(),
+    } as PlayerJoinPacket, client.id);
+
+    gameState.send(client, {
+      type: PacketType.SaveResponse,
+      success: true,
+      timestamp: Date.now()
+    } as SaveResponsePacket);
+  } catch(e) {
+    console.error(`Failed to parse save data from ${client.id}:`, e);
+    gameState.send(client, {
+      type: PacketType.SaveResponse,
+      success: false,
+      timestamp: Date.now()
+    } as SaveResponsePacket);
+  }
 }

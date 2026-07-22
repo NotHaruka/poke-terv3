@@ -3,7 +3,7 @@
 import {
   Vec2, Direction, TILE_SIZE, PlayerState,
   PLAYER_WALK_SPEED, PLAYER_RUN_SPEED, PLAYER_SPRINT_SPEED,
-  DIAGONAL_NORMALIZER, PlayerProfile
+  DIAGONAL_NORMALIZER, PlayerProfile, PlayerData
 } from 'poke-ter-shared';
 import { InputManager } from '../../engine/InputManager.js';
 import { CollisionSystem } from '../../engine/Collision.js';
@@ -31,6 +31,12 @@ export class Player {
   ];
   hasStarter: boolean = false;
   activeFollowerIndex: number = 0;
+  currentMap: string = 'city';
+  pokedex: number[] = [];
+  badges: number = 0;
+  boxes: import('poke-ter-shared').MonsterInstance[][] = Array(8).fill([]);
+  storyFlags: Record<string, boolean> = {};
+
   private inputManager: InputManager;
   private collisionSystem: CollisionSystem;
 
@@ -48,6 +54,41 @@ export class Player {
     this.inputManager = inputManager;
     this.collisionSystem = collisionSystem;
     this.profile = profile;
+  }
+
+  getPlayerData(id: string, username: string): PlayerData {
+    return {
+      id,
+      username,
+      profile: this.profile || { name: username, bodyType: 'male', hairStyle: 'Short', hairColor: '#333', skinTone: '#fcdcb8', eyeColor: '#333', shirtColor: '#fff', pantsColor: '#333', shoesColor: '#fff', hatType: 'None', backpackType: 'Standard' },
+      position: { x: this.x, y: this.y },
+      direction: this.direction,
+      speed: this.speed,
+      money: this.money,
+      party: this.party,
+      boxes: this.boxes,
+      inventory: this.inventory,
+      pokedex: this.pokedex,
+      badges: this.badges,
+      currentMap: this.currentMap,
+      storyFlags: this.storyFlags
+    };
+  }
+
+  loadPlayerData(data: PlayerData): void {
+    if (data.profile) this.profile = data.profile;
+    this.x = data.position.x;
+    this.y = data.position.y;
+    this.direction = data.direction;
+    this.money = data.money || 0;
+    this.party = data.party || [];
+    this.boxes = data.boxes || Array(8).fill([]);
+    this.inventory = data.inventory || [];
+    this.pokedex = data.pokedex || [];
+    this.badges = data.badges || 0;
+    this.currentMap = data.currentMap || 'city';
+    this.storyFlags = data.storyFlags || {};
+    this.hasStarter = this.party.length > 0;
   }
 
   update(dt: number): void {

@@ -3,8 +3,8 @@
 import {
   PacketType, AnyPacket, HelloPacket, WelcomePacket,
   PlayerInputPacket, PlayerMovePacket, ChunkRequestPacket, ChunkDataPacket,
-  PlayerJoinPacket, PlayerLeavePacket, PingPacket, PongPacket,
-  SERVER_PORT,
+  PlayerJoinPacket, PlayerLeavePacket, PingPacket, PongPacket, SaveRequestPacket,
+  SERVER_PORT, PlayerData
 } from 'poke-ter-shared';
 
 export type MessageHandler = (packet: AnyPacket) => void;
@@ -155,10 +155,26 @@ export class NetworkClient {
     return this.ping;
   }
 
+  /** Send save data to server */
+  sendSaveData(playerData: PlayerData): void {
+    const packet: SaveRequestPacket = {
+      type: PacketType.SaveRequest,
+      data: JSON.stringify(playerData),
+      timestamp: Date.now()
+    };
+    this.send(packet);
+  }
+
   private sendHello(): void {
     let savedSessionId = this.playerId;
     if (!savedSessionId) {
-      try { savedSessionId = sessionStorage.getItem('poke_ter_session_id') || ''; } catch (e) {}
+      try { 
+        savedSessionId = localStorage.getItem('poketer_client_id') || ''; 
+        if (!savedSessionId) {
+          savedSessionId = 'player_' + Math.random().toString(36).substr(2, 9);
+          localStorage.setItem('poketer_client_id', savedSessionId);
+        }
+      } catch (e) {}
     }
     
     let profile = undefined;
@@ -193,7 +209,7 @@ export class NetworkClient {
       case PacketType.Welcome:
         const welcome = packet as WelcomePacket;
         this.playerId = welcome.playerId;
-        try { sessionStorage.setItem('poke_ter_session_id', this.playerId); } catch (e) {}
+        try { localStorage.setItem('poketer_client_id', this.playerId); } catch (e) {}
         break;
       case PacketType.Pong:
         const pong = packet as PongPacket;

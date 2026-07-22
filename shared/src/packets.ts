@@ -1,6 +1,6 @@
 /** Strongly typed network packet definitions */
 
-import { PlayerProfile } from './types';
+import { PlayerProfile, PlayerData } from './types';
 
 export enum PacketType {
   // Connection
@@ -69,6 +69,7 @@ export interface WelcomePacket extends Packet {
   mapId: string;
   seed: number;
   serverStartTime: number;
+  playerData?: PlayerData;
 }
 
 export interface DisconnectPacket extends Packet {
@@ -83,6 +84,7 @@ export interface PlayerSnapshot {
   position: { x: number; y: number };
   direction: string;
   profile?: PlayerProfile;
+  activeMonster?: MonsterSnapshot;
 }
 
 export interface PlayerInputPacket extends Packet {

@@ -95,6 +95,8 @@ export class OverworldScene implements Scene {
 
   // Multiplayer player list
   private otherPlayers = new Map<string, PlayerSnapshot>();
+  private otherFollowers = new Map<string, FollowerMonster>();
+  private autosaveTimer: number = 0;
 
   // Biome discovery tracking
   private lastBiomeName: string = '';
@@ -156,6 +158,19 @@ export class OverworldScene implements Scene {
       this.player,
       this.camera
     );
+
+    // Synchronously restore last saved local progress
+    const savedDataStr = localStorage.getItem('poketer_player_data');
+    if (savedDataStr) {
+      try {
+        console.log('[OverworldScene] Sync-loading player data from local storage...');
+        const data = JSON.parse(savedDataStr);
+        this.player.loadPlayerData(data);
+        this.currentMapId = data.currentMap || 'city';
+      } catch (e) {
+        console.error('[OverworldScene] Failed to load saved local progress:', e);
+      }
+    }
 
     // Active Companion & Combat Setup
     this.followerMonster = new FollowerMonster(this.player.x, this.player.y + 18);
@@ -259,12 +274,22 @@ export class OverworldScene implements Scene {
     }
     
     this.otherPlayers.clear();
+    this.otherFollowers.clear();
     if (welcome.players) {
       for (const op of welcome.players) {
         if (op.id !== welcome.playerId) {
           this.otherPlayers.set(op.id, op);
+          if (op.activeMonster) {
+            console.log(`[Multiplayer] Spawning active companion for ${op.username}: ${op.activeMonster.nickname || 'Monster'}`);
+            this.otherFollowers.set(op.id, new FollowerMonster(op.position.x, op.position.y + 18));
+          }
         }
       }
+    }
+
+    if (welcome.playerData) {
+      console.log('[Multiplayer] Loaded server-authoritative save data');
+      this.player.loadPlayerData(welcome.playerData);
     }
 
     this.setMap(welcome.mapId);
@@ -278,10 +303,15 @@ export class OverworldScene implements Scene {
     this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
     
     this.otherPlayers.clear();
+    this.otherFollowers.clear();
     if (res.players) {
       for (const op of res.players) {
         if (op.id !== this.networkClient?.getId()) {
           this.otherPlayers.set(op.id, op);
+          if (op.activeMonster) {
+            console.log(`[Multiplayer] Spawning active companion for ${op.username}: ${op.activeMonster.nickname || 'Monster'}`);
+            this.otherFollowers.set(op.id, new FollowerMonster(op.position.x, op.position.y + 18));
+          }
         }
       }
     }
@@ -292,8 +322,22 @@ export class OverworldScene implements Scene {
   private onPlayerJoin = (packet: any): void => {
     const p = (packet as PlayerJoinPacket).player;
     if (p.id !== this.networkClient?.getId()) {
+      const existed = this.otherPlayers.has(p.id);
       this.otherPlayers.set(p.id, p);
-      this.controlsHUD.showToast(`${p.username || 'Trainer'} joined world!`, '👋');
+      
+      if (p.activeMonster) {
+        if (!this.otherFollowers.has(p.id)) {
+          this.otherFollowers.set(p.id, new FollowerMonster(p.position.x, p.position.y + 18));
+        }
+      } else {
+        this.otherFollowers.delete(p.id);
+      }
+
+      if (!existed) {
+        this.controlsHUD.showToast(`${p.username || 'Trainer'} joined world!`, '👋');
+      } else {
+        console.log(`[Multiplayer] Updated player info for ${p.id} (active companion: ${p.activeMonster?.nickname || 'none'})`);
+      }
     }
   };
 
@@ -304,6 +348,7 @@ export class OverworldScene implements Scene {
       this.controlsHUD.showToast(`${op.username || 'Trainer'} left area`, '🚶');
     }
     this.otherPlayers.delete(id);
+    this.otherFollowers.delete(id);
   };
 
   private onPlayerMove = (packet: any): void => {
@@ -441,6 +486,8 @@ export class OverworldScene implements Scene {
       return;
     }
 
+    this.saveGame(false); // Save progress when changing maps/warps!
+
     this.isWarping = true;
     this.networkClient?.send({
       type: PacketType.MapChangeRequest,
@@ -450,6 +497,25 @@ export class OverworldScene implements Scene {
     setTimeout(() => {
       this.isWarping = false;
     }, 1500);
+  }
+
+  public saveGame(showToast = true): void {
+    const pData = this.player.getPlayerData(this.networkClient?.getId() || 'local', this.player.profile?.name || 'Trainer');
+    pData.currentMap = this.currentMapId;
+    const dataStr = JSON.stringify(pData);
+    localStorage.setItem('poketer_player_data', dataStr);
+    if (this.player.profile) {
+      localStorage.setItem('poketer_player_profile', JSON.stringify(this.player.profile));
+    }
+    
+    if (this.networkClient && this.networkClient.isConnected()) {
+      console.log('[SaveGame] Sending save request to server...');
+      this.networkClient.sendSaveData(pData);
+    }
+    
+    if (showToast) {
+      this.controlsHUD.showToast('Game saved successfully!', '💾', 3.0);
+    }
   }
 
   update(dt: number): void {
@@ -494,6 +560,56 @@ export class OverworldScene implements Scene {
         }
       }
     }
+
+    // Update other players' follower companion monsters
+    for (const [opId, op] of this.otherPlayers) {
+      if (op.activeMonster) {
+        let follower = this.otherFollowers.get(opId);
+        if (!follower) {
+          follower = new FollowerMonster(op.position.x, op.position.y + 18);
+          this.otherFollowers.set(opId, follower);
+          console.log(`[Multiplayer] Spawning missing active companion for ${op.username}`);
+        }
+
+        const species = MONSTER_SPECIES.find(s => s.id === op.activeMonster.speciesId);
+        const monsterType = species ? species.types[0] : 0;
+        const speciesName = species ? species.name : 'Monster';
+
+        // Detect if remote player is moving
+        let opMoving = false;
+        const lastPos = (op as any).lastLoggedPosition;
+        if (lastPos) {
+          const dx = op.position.x - lastPos.x;
+          const dy = op.position.y - lastPos.y;
+          if (Math.hypot(dx, dy) > 0.1) {
+            opMoving = true;
+          }
+        }
+        (op as any).lastLoggedPosition = { x: op.position.x, y: op.position.y };
+
+        follower.update(
+          dt,
+          op.position.x,
+          op.position.y,
+          op.direction as import('poke-ter-shared').Direction,
+          opMoving,
+          this.lastBiomeName,
+          monsterType,
+          speciesName,
+          this.particleSystem
+        );
+      } else {
+        this.otherFollowers.delete(opId);
+      }
+    }
+
+    // Periodic autosave (every 30 seconds)
+    this.autosaveTimer += dt;
+    if (this.autosaveTimer >= 30000) {
+      this.autosaveTimer = 0;
+      this.saveGame(false);
+      this.controlsHUD.showToast('Autosaved game progress', '💾', 1.5);
+    }
     
     // Keybind shortcut: E key opens Main Menu
     if (this.inputManager.justPressed('KeyE') && !this.isDialogueActive && !this.menuManager.isOpen()) {
@@ -507,15 +623,10 @@ export class OverworldScene implements Scene {
         } else if (option === 'Player Card') {
           this.menuManager.openMenu(new PlayerCardMenu(this.player, this.clockManager, () => this.playTimeMs));
         } else if (option === 'Save') {
-          if (this.player.profile) {
-            localStorage.setItem('poketer_player_profile', JSON.stringify(this.player.profile));
-          }
-          this.controlsHUD.showToast('Game saved successfully!', '💾', 3.0);
+          this.saveGame(true);
           if (this.audioManager) this.audioManager.playSFX('select');
         } else if (option === 'Exit') {
-          if (this.player.profile) {
-            localStorage.setItem('poketer_player_profile', JSON.stringify(this.player.profile));
-          }
+          this.saveGame(false);
           const game = (window as any).__game;
           if (game && game.sceneManager) {
             game.sceneManager.replace(new TitleScreenScene(this.renderer, this.inputManager, this.networkClient, this.audioManager));
@@ -645,6 +756,7 @@ export class OverworldScene implements Scene {
                   this.player.activeFollowerIndex = 0;
                   this.controlsHUD.showToast(`${starter.nickname} joined your party as your active companion!`, '✨', 4.0);
                   if (this.audioManager) this.audioManager.playSFX('open');
+                  this.saveGame(false); // Save progress immediately
                 }));
               }
               return;
@@ -760,7 +872,7 @@ export class OverworldScene implements Scene {
         });
       }
 
-      for (const [, op] of this.otherPlayers) {
+      for (const [opId, op] of this.otherPlayers) {
         const screenX = Math.round(op.position.x - offsetX);
         const screenY = Math.round(op.position.y - offsetY);
 
@@ -770,6 +882,31 @@ export class OverworldScene implements Scene {
             PlayerRenderer.render(ctx, screenX, screenY, op.direction as import('poke-ter-shared').Direction, false, 0, op.position.x, op.profile, op.username);
           },
         });
+
+        if (op.activeMonster) {
+          const follower = this.otherFollowers.get(opId);
+          if (follower) {
+            const species = MONSTER_SPECIES.find(s => s.id === op.activeMonster.speciesId);
+            if (species) {
+              drawables.push({
+                sortY: follower.y + 16,
+                draw: () => {
+                  follower.render(
+                    ctx,
+                    offsetX,
+                    offsetY,
+                    op.activeMonster!.speciesId,
+                    op.activeMonster!.nickname || species.name,
+                    op.activeMonster!.level,
+                    op.activeMonster!.currentHp,
+                    op.activeMonster!.maxHp,
+                    this.totalAnimTime
+                  );
+                }
+              });
+            }
+          }
+        }
       }
 
       drawables.push({
@@ -834,7 +971,7 @@ export class OverworldScene implements Scene {
         });
       }
 
-      for (const [, op] of this.otherPlayers) {
+      for (const [opId, op] of this.otherPlayers) {
         const screenX = Math.round(op.position.x - offsetX);
         const screenY = Math.round(op.position.y - offsetY);
         if (screenX < -16 || screenX > GAME_WIDTH || screenY < -16 || screenY > GAME_HEIGHT) continue;
@@ -845,6 +982,31 @@ export class OverworldScene implements Scene {
             PlayerRenderer.render(ctx, screenX, screenY, op.direction as import('poke-ter-shared').Direction, false, 0, op.position.x, op.profile, op.username);
           },
         });
+
+        if (op.activeMonster) {
+          const follower = this.otherFollowers.get(opId);
+          if (follower) {
+            const species = MONSTER_SPECIES.find(s => s.id === op.activeMonster.speciesId);
+            if (species) {
+              drawables.push({
+                sortY: follower.y + 16,
+                draw: () => {
+                  follower.render(
+                    ctx,
+                    offsetX,
+                    offsetY,
+                    op.activeMonster!.speciesId,
+                    op.activeMonster!.nickname || species.name,
+                    op.activeMonster!.level,
+                    op.activeMonster!.currentHp,
+                    op.activeMonster!.maxHp,
+                    this.totalAnimTime
+                  );
+                }
+              });
+            }
+          }
+        }
       }
 
       drawables.push({
