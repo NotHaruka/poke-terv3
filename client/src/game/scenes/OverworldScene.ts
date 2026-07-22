@@ -1,4 +1,4 @@
-/** Main overworld exploration scene */
+/** Main overworld exploration scene with full QoL HUD, Minimap, Friend Radar, and Controls */
 
 import { Scene } from '../../engine/SceneManager.js';
 import { Renderer } from '../../engine/Renderer.js';
@@ -38,12 +38,16 @@ import {
 
 import { NPCRenderer } from '../../engine/rendering/NPCRenderer.js';
 import { PlayerRenderer } from '../../engine/rendering/PlayerRenderer.js';
-import { UIRenderer } from '../../engine/rendering/UIRenderer.js';
 
 import { BuildingManager } from '../../engine/buildings/BuildingManager.js';
 import { InteriorManager } from '../../engine/interiors/InteriorManager.js';
 import { TransitionManager } from '../../engine/doors/TransitionManager.js';
 import { DoorSystem } from '../../engine/doors/DoorSystem.js';
+
+// QoL HUD imports
+import { MinimapHUD, MinimapMarker } from '../ui/hud/MinimapHUD.js';
+import { DirectionalPointer } from '../ui/hud/DirectionalPointer.js';
+import { ControlsHUD } from '../ui/hud/ControlsHUD.js';
 
 export class OverworldScene implements Scene {
   private renderer: Renderer;
@@ -57,6 +61,14 @@ export class OverworldScene implements Scene {
   private networkClient: NetworkClient | null;
   private audioManager: AudioManager | null = null;
   private debugMode = false;
+
+  // QoL HUD instances
+  private minimapHUD: MinimapHUD;
+  private directionalPointer: DirectionalPointer;
+  private controlsHUD: ControlsHUD;
+
+  // Footstep audio timing
+  private footstepTimer: number = 0;
 
   // Pokémon-style Building & Interior System
   private buildingManager: BuildingManager;
@@ -93,7 +105,13 @@ export class OverworldScene implements Scene {
   private clockManager: ClockManager;
   private playTimeMs: number = 0;
 
-  constructor(renderer: Renderer, inputManager: InputManager, networkClient: NetworkClient | null = null, audioManager: AudioManager | null = null, profile?: import('poke-ter-shared').PlayerProfile) {
+  constructor(
+    renderer: Renderer,
+    inputManager: InputManager,
+    networkClient: NetworkClient | null = null,
+    audioManager: AudioManager | null = null,
+    profile?: import('poke-ter-shared').PlayerProfile
+  ) {
     this.renderer = renderer;
     this.inputManager = inputManager;
     this.networkClient = networkClient;
@@ -106,6 +124,11 @@ export class OverworldScene implements Scene {
     this.uiManager = new UIManager(renderer.getContext());
     this.menuManager = new MenuManager(inputManager, this.player, this.audioManager);
     this.clockManager = new ClockManager();
+
+    // QoL HUD initializations
+    this.minimapHUD = new MinimapHUD();
+    this.directionalPointer = new DirectionalPointer();
+    this.controlsHUD = new ControlsHUD();
 
     // Initialize Building & Interior Systems
     this.buildingManager = new BuildingManager(this.collisionSystem);
@@ -129,6 +152,76 @@ export class OverworldScene implements Scene {
       this.networkClient.on(PacketType.PlayerMove, this.onPlayerMove);
       this.networkClient.on(PacketType.PlayerPos, this.onPlayerPos);
     }
+
+    this.attachCanvasClickListener();
+  }
+
+  private attachCanvasClickListener(): void {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) return;
+
+    canvas.addEventListener('click', (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const scale = this.renderer.getScale();
+      const clickX = (e.clientX - rect.left) / scale;
+      const clickY = (e.clientY - rect.top) / scale;
+
+
+
+      // 2. Check Minimap click (Top-Left 6,6 with expanded buttons height)
+      const minimapAction = this.minimapHUD.handleClick(clickX, clickY, this.directionalPointer);
+      if (minimapAction) {
+        if (this.audioManager) {
+          this.audioManager.playSFX(minimapAction === 'toggle_expand' ? 'open' : 'select');
+        }
+        if (minimapAction === 'toggle_expand') {
+          this.controlsHUD.showToast(this.minimapHUD.isMaximized() ? 'Minimap Expanded' : 'Minimap Compacted', '🗺️');
+        } else if (minimapAction === 'toggle_friends') {
+          this.controlsHUD.showToast(this.directionalPointer.showFriends ? 'Friend Radar Enabled' : 'Friend Radar Disabled', '👥');
+        } else if (minimapAction === 'toggle_portals') {
+          this.controlsHUD.showToast(this.directionalPointer.showPortals ? 'Portal Pointers Enabled' : 'Portal Pointers Disabled', '🌀');
+        }
+        return;
+      }
+
+      // 3. Check Control HUD chip clicks
+      const action = this.controlsHUD.handleClick(clickX, clickY);
+      if (action === 'M') {
+        this.minimapHUD.toggleExpand();
+        if (this.audioManager) this.audioManager.playSFX('select');
+        this.controlsHUD.showToast(this.minimapHUD.isMaximized() ? 'Minimap Expanded' : 'Minimap Compacted', '🗺️');
+      } else if (action === 'N') {
+        this.cycleAudioVolume();
+      } else if (action === 'E') {
+        if (!this.menuManager.isOpen()) {
+          this.menuManager.openMenu(new MainMenu((option) => {
+            if (option === 'Backpack') this.menuManager.openMenu(new BackpackMenu(this.player));
+            else if (option === 'Data Log') this.menuManager.openMenu(new PokedexMenu(this.player));
+            else if (option === 'Monster Party') this.menuManager.openMenu(new PartyMenu(this.player));
+            else if (option === 'Player Card') this.menuManager.openMenu(new PlayerCardMenu(this.player, this.clockManager, () => this.playTimeMs));
+          }));
+        }
+      }
+    });
+  }
+
+  private cycleAudioVolume(): void {
+    if (!this.audioManager) return;
+    const current = this.audioManager.musicVol;
+    let next = 0.5;
+    if (current >= 0.9) next = 0.0;
+    else if (current === 0.0) next = 0.25;
+    else if (current === 0.25) next = 0.5;
+    else next = 1.0;
+
+    this.audioManager.setMusicVolume(next);
+    if (this.audioManager) this.audioManager.playSFX('select');
+
+    if (next === 0) {
+      this.controlsHUD.showToast('Audio Muted', '🔇');
+    } else {
+      this.controlsHUD.showToast(`Music: ${Math.round(next * 100)}%`, '🔊');
+    }
   }
 
   private onPlayerPos = (packet: any): void => {
@@ -148,7 +241,6 @@ export class OverworldScene implements Scene {
       this.clockManager.setServerStartTime(welcome.serverStartTime);
     }
     
-    // Process initial other players
     this.otherPlayers.clear();
     if (welcome.players) {
       for (const op of welcome.players) {
@@ -168,7 +260,6 @@ export class OverworldScene implements Scene {
     this.player.y = res.position.y;
     this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
     
-    // Reload other players for this map
     this.otherPlayers.clear();
     if (res.players) {
       for (const op of res.players) {
@@ -185,11 +276,16 @@ export class OverworldScene implements Scene {
     const p = (packet as PlayerJoinPacket).player;
     if (p.id !== this.networkClient?.getId()) {
       this.otherPlayers.set(p.id, p);
+      this.controlsHUD.showToast(`${p.username || 'Trainer'} joined world!`, '👋');
     }
   };
 
   private onPlayerLeave = (packet: any): void => {
     const id = (packet as PlayerLeavePacket).playerId;
+    const op = this.otherPlayers.get(id);
+    if (op) {
+      this.controlsHUD.showToast(`${op.username || 'Trainer'} left area`, '🚶');
+    }
     this.otherPlayers.delete(id);
   };
 
@@ -213,15 +309,14 @@ export class OverworldScene implements Scene {
   private setMap(mapId: string) {
     this.currentMapId = mapId;
     this.chunkManager.currentMapId = mapId;
-    this.chunkManager.clear(); // Clean slate
+    this.chunkManager.clear();
 
-    // If map is an interior map
     if (mapId.includes('interior')) {
       const interior = this.interiorManager.loadInterior(mapId);
       this.npcs = interior ? interior.npcs : [];
       this.doorSystem.isInInterior = true;
+      this.lastBiomeName = 'Building';
     } else {
-      // Overworld Map
       const seed = this.chunkManager.currentSeed;
       this.doorSystem.setSeed(seed);
       this.buildingManager.setMap(mapId, seed);
@@ -229,15 +324,18 @@ export class OverworldScene implements Scene {
       this.doorSystem.isInInterior = false;
 
       this.npcs = getNPCsForMap(mapId, seed);
+
+      const playerGx = Math.floor(this.player.x / 16);
+      const playerGy = Math.floor(this.player.y / 16);
+      const currentBiome = getBiomeAt(playerGx, playerGy, seed);
+      this.lastBiomeName = currentBiome.name;
     }
 
-    // Clear old npc colliders from collision system
     for (const c of this.npcColliders) {
       this.collisionSystem.remove(c);
     }
     this.npcColliders = [];
 
-    // Add new npc colliders
     for (const npc of this.npcs) {
       const collider: Collider = {
         x: npc.position.x,
@@ -252,7 +350,7 @@ export class OverworldScene implements Scene {
     }
 
     this.bannerAlpha = 1;
-    this.bannerTimer = 3; // Show for 3 seconds
+    this.bannerTimer = 3;
     this.updateBackgroundMusic();
   }
 
@@ -277,13 +375,13 @@ export class OverworldScene implements Scene {
   init(): void {
     this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
     this.setMap(this.currentMapId);
+    this.controlsHUD.showToast('Welcome to Poke-ter!', '✨', 3.0);
   }
 
   private getNPCInFront(): NPCDefinition | null {
     const px = this.player.x;
     const py = this.player.y;
     
-    // Check interior NPCs or Overworld NPCs
     const activeNpcs = this.doorSystem.isInInterior 
       ? (this.interiorManager.getActiveInterior()?.npcs || [])
       : this.npcs;
@@ -292,19 +390,14 @@ export class OverworldScene implements Scene {
       const dx = npc.position.x - px;
       const dy = npc.position.y - py;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // If we are close enough to interact (within ~1.5 tiles / 24 pixels in overworld, or ~2.8 tiles / 45 pixels in interiors to reach across counters)
       const maxDistance = this.doorSystem.isInInterior ? 45 : 24;
+
       if (distance < maxDistance) {
         const dir = this.player.direction;
-        
-        // Lenient directional check: are they facing towards the NPC?
         if (dir.includes('up') && dy < -4) return npc;
         if (dir.includes('down') && dy > 4) return npc;
         if (dir.includes('left') && dx < -4) return npc;
         if (dir.includes('right') && dx > 4) return npc;
-        
-        // Fallback: if they are extremely close, allow interaction
         if (distance < 18) return npc;
       }
     }
@@ -327,27 +420,41 @@ export class OverworldScene implements Scene {
     this.playTimeMs += dt;
     this.clockManager.update(dt);
     this.transitionManager.update(dt);
+    this.controlsHUD.update(dt);
+    this.minimapHUD.update(dt);
     
-    // Process menu update
     this.menuManager.update(dt);
     
-    // Toggle menu
+    // Keybind shortcut: E key opens Main Menu
     if (this.inputManager.justPressed('KeyE') && !this.isDialogueActive && !this.menuManager.isOpen()) {
       this.menuManager.openMenu(new MainMenu((option) => {
         if (option === 'Backpack') {
-          this.menuManager.openMenu(new BackpackMenu());
+          this.menuManager.openMenu(new BackpackMenu(this.player));
         } else if (option === 'Data Log') {
           this.menuManager.openMenu(new PokedexMenu(this.player));
         } else if (option === 'Monster Party') {
           this.menuManager.openMenu(new PartyMenu(this.player));
         } else if (option === 'Player Card') {
           this.menuManager.openMenu(new PlayerCardMenu(this.player, this.clockManager, () => this.playTimeMs));
-        } else if (option === 'Save') {
-          console.log('Save architecture ready.');
-        } else if (option === 'Exit') {
-          // Do nothing
         }
       }));
+    }
+
+    // Keybind shortcut: M key toggles Minimap view
+    if (this.inputManager.justPressed('KeyM')) {
+      this.minimapHUD.toggleExpand();
+      if (this.audioManager) this.audioManager.playSFX('open');
+      this.controlsHUD.showToast(this.minimapHUD.isMaximized() ? 'Minimap Expanded' : 'Minimap Compacted', '🗺️');
+    }
+
+    // Keybind shortcut: N key cycles Audio Volume
+    if (this.inputManager.justPressed('KeyN')) {
+      this.cycleAudioVolume();
+    }
+
+    // Keybind shortcut: H key toggles Control HUD
+    if (this.inputManager.justPressed('KeyH')) {
+      this.controlsHUD.toggleVisibility();
     }
 
     envSystem.update(dt);
@@ -359,10 +466,9 @@ export class OverworldScene implements Scene {
       this.buildingManager.update(dt);
     }
 
-    // Door system trigger checks
     this.doorSystem.update();
 
-    // Spawn environmental particles
+    // Environmental Particles
     if (Math.random() < 0.1 && !this.doorSystem.isInInterior) {
       const pX = this.camera.getX() + Math.random() * GAME_WIDTH;
       const pY = this.camera.getY() + Math.random() * GAME_HEIGHT;
@@ -375,7 +481,6 @@ export class OverworldScene implements Scene {
       }
     }
 
-    // Toggle debug mode
     if (this.inputManager.justPressed('F3')) {
       this.debugMode = !this.debugMode;
     }
@@ -404,7 +509,6 @@ export class OverworldScene implements Scene {
 
       // Check NPC / Furniture interactions
       if (!this.menuManager.isOpen() && (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter'))) {
-        // 1. Check NPC interaction
         const npc = this.getNPCInFront();
         if (npc) {
           this.isDialogueActive = true;
@@ -419,10 +523,8 @@ export class OverworldScene implements Scene {
             case 'right': npc.direction = 'left'; break;
           }
         } else if (this.doorSystem.isInInterior) {
-          // 2. Check Interior Furniture interaction
           const pGx = Math.floor(this.player.getCenterX() / 16);
           const pGy = Math.floor(this.player.getCenterY() / 16);
-          // Look 1 tile ahead based on player direction
           let checkGx = pGx;
           let checkGy = pGy;
           if (this.player.direction === 'up') checkGy--;
@@ -442,12 +544,12 @@ export class OverworldScene implements Scene {
               this.audioManager.playSound('open');
             }
 
-            // If Healing Machine, heal party
             if (furniture.type === 'healing_machine' && this.player.party) {
               for (const m of this.player.party) {
                 m.currentHp = m.maxHp;
                 m.status = 0;
               }
+              this.controlsHUD.showToast('Party fully restored!', '💖');
             }
           }
         }
@@ -483,12 +585,9 @@ export class OverworldScene implements Scene {
       
       if (currentBiome.name !== this.lastBiomeName) {
         this.lastBiomeName = currentBiome.name;
-        this.bannerAlpha = 1;
-        this.bannerTimer = 3.5;
       }
     }
 
-    // Sync input actions back to server
     if (this.networkClient && this.networkClient.isConnected()) {
       let keysRecord = this.inputManager.getKeysRecord();
       if (this.menuManager.isOpen() || this.isDialogueActive || this.transitionManager.isTransitioning()) {
@@ -497,11 +596,11 @@ export class OverworldScene implements Scene {
       this.networkClient.sendInput(keysRecord, this.player.direction, { x: this.player.x, y: this.player.y });
     }
 
-    // Banner fade logic
     if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
+      const dtSec = dt / 1000;
+      this.bannerTimer -= dtSec;
       if (this.bannerTimer <= 0) {
-        this.bannerAlpha -= dt * 2;
+        this.bannerAlpha -= dtSec * 2;
         if (this.bannerAlpha <= 0) {
           this.bannerAlpha = 0;
         } else {
@@ -510,12 +609,10 @@ export class OverworldScene implements Scene {
       }
     }
 
-    // Update chunks if in overworld
     if (!this.doorSystem.isInInterior) {
       this.chunkManager.update(this.player.getCenterX(), this.player.getCenterY());
     }
 
-    // Camera follow
     this.camera.follow(this.player.getCenterX(), this.player.getCenterY());
     this.camera.update(dt);
 
@@ -533,10 +630,8 @@ export class OverworldScene implements Scene {
     const drawables: Drawable[] = [];
 
     if (this.doorSystem.isInInterior) {
-      // 1. Render Interior Map
       this.interiorManager.render(ctx, offsetX, offsetY);
 
-      // Interior NPCs
       for (const npc of this.npcs) {
         const screenX = Math.round(npc.position.x - offsetX);
         const screenY = Math.round(npc.position.y - offsetY);
@@ -549,7 +644,6 @@ export class OverworldScene implements Scene {
         });
       }
 
-      // Other interior players
       for (const [, op] of this.otherPlayers) {
         const screenX = Math.round(op.position.x - offsetX);
         const screenY = Math.round(op.position.y - offsetY);
@@ -562,7 +656,6 @@ export class OverworldScene implements Scene {
         });
       }
 
-      // Player
       drawables.push({
         sortY: this.player.y + this.player.height,
         draw: () => this.player.render(ctx, offsetX, offsetY),
@@ -572,10 +665,8 @@ export class OverworldScene implements Scene {
       for (const d of drawables) d.draw();
 
     } else {
-      // 2. Render Overworld Map
       this.chunkManager.render(ctx, offsetX, offsetY);
 
-      // Overhangs
       for (const overhang of this.chunkManager.getOverhangs(offsetX, offsetY)) {
         drawables.push({
           sortY: overhang.sortY,
@@ -583,12 +674,10 @@ export class OverworldScene implements Scene {
         });
       }
 
-      // Buildings
       for (const bDrawable of this.buildingManager.getDrawables(ctx, offsetX, offsetY)) {
         drawables.push(bDrawable);
       }
 
-      // Overworld NPCs
       for (const npc of this.npcs) {
         const screenX = Math.round(npc.position.x - offsetX);
         const screenY = Math.round(npc.position.y - offsetY);
@@ -602,7 +691,6 @@ export class OverworldScene implements Scene {
         });
       }
 
-      // Other players
       for (const [, op] of this.otherPlayers) {
         const screenX = Math.round(op.position.x - offsetX);
         const screenY = Math.round(op.position.y - offsetY);
@@ -616,7 +704,6 @@ export class OverworldScene implements Scene {
         });
       }
 
-      // Local player
       drawables.push({
         sortY: this.player.y + this.player.height,
         draw: () => this.player.render(ctx, offsetX, offsetY),
@@ -645,16 +732,113 @@ export class OverworldScene implements Scene {
       this.uiManager.drawLocationBanner(ctx, activeInterior.name, 'Building Interior', this.bannerAlpha);
     }
 
-    // Clock HUD
-    ctx.fillStyle = 'rgba(15, 20, 35, 0.85)';
-    ctx.fillRect(GAME_WIDTH - 64, 4, 60, 20);
+
+
+    // QoL HUD 1: Minimap / Radar HUD (Top-Left)
+    const minimapMarkers: MinimapMarker[] = [
+      { x: this.player.x, y: this.player.y, type: 'player' },
+    ];
+    for (const npc of this.npcs) {
+      minimapMarkers.push({ x: npc.position.x, y: npc.position.y, type: 'npc' });
+    }
+    for (const [, op] of this.otherPlayers) {
+      minimapMarkers.push({ x: op.position.x, y: op.position.y, type: 'friend' });
+    }
+    this.minimapHUD.render(
+      ctx,
+      this.player.x,
+      this.player.y,
+      this.player.direction,
+      this.currentMapId,
+      this.lastBiomeName,
+      minimapMarkers,
+      this.chunkManager.currentSeed,
+      this.interiorManager.getActiveInterior(),
+      this.directionalPointer.showFriends,
+      this.directionalPointer.showPortals
+    );
+
+    // Clock HUD (placed elegantly at the bottom of the map)
+    const mapProgress = this.minimapHUD.getExpandProgress();
+    const mapSize = 54 + (110 - 54) * mapProgress;
+    const mapExtraHeight = 34 * mapProgress;
+    const mapTotalHeight = mapSize + mapExtraHeight;
+    const clockX = 6;
+    const clockY = 6 + mapTotalHeight + 3;
+    const clockW = mapSize;
+    const clockH = 11;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.92)';
+    ctx.fillRect(clockX, clockY, clockW, clockH);
     ctx.strokeStyle = '#4deeea';
-    ctx.strokeRect(GAME_WIDTH - 64, 4, 60, 20);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(clockX, clockY, clockW, clockH);
+
+    // Accent lines or corner dots
+    ctx.fillStyle = '#ff007f';
+    ctx.fillRect(clockX, clockY, 2, 2);
+    ctx.fillRect(clockX + clockW - 2, clockY, 2, 2);
+    ctx.fillRect(clockX, clockY + clockH - 2, 2, 2);
+    ctx.fillRect(clockX + clockW - 2, clockY + clockH - 2, 2, 2);
+
     ctx.fillStyle = '#ffffff';
-    ctx.font = '10px monospace';
+    ctx.font = '6.5px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.clockManager.getTimeString(), GAME_WIDTH - 34, 15);
+    ctx.fillText(this.clockManager.getTimeString(), clockX + clockW / 2, clockY + clockH / 2 + 0.5);
+    ctx.restore();
+
+    // Biome HUD (placed elegantly directly below the clock)
+    const biomeX = clockX;
+    const biomeY = clockY + clockH + 3;
+    const biomeW = clockW;
+    const biomeH = 11;
+
+    let biomeText = this.lastBiomeName || 'Unknown';
+    if (this.doorSystem.isInInterior) {
+      biomeText = 'Building';
+    }
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.92)';
+    ctx.fillRect(biomeX, biomeY, biomeW, biomeH);
+    ctx.strokeStyle = '#4deeea';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(biomeX, biomeY, biomeW, biomeH);
+
+    // Accent lines or corner dots (green for biome/nature)
+    ctx.fillStyle = '#00ff66';
+    ctx.fillRect(biomeX, biomeY, 2, 2);
+    ctx.fillRect(biomeX + biomeW - 2, biomeY, 2, 2);
+    ctx.fillRect(biomeX, biomeY + biomeH - 2, 2, 2);
+    ctx.fillRect(biomeX + biomeW - 2, biomeY + biomeH - 2, 2, 2);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '6.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(biomeText.toUpperCase(), biomeX + biomeW / 2, biomeY + biomeH / 2 + 0.5);
+    ctx.restore();
+
+    // QoL HUD 2: Directional Pointer HUD
+    this.directionalPointer.render(
+      ctx,
+      this.player.x,
+      this.player.y,
+      this.currentMapId,
+      this.otherPlayers,
+      offsetX,
+      offsetY
+    );
+
+    // QoL HUD 3: Controls & Keybinding Overlay (Bottom Bar)
+    this.controlsHUD.render(
+      ctx,
+      this.inputManager.isShiftHeld(),
+      this.audioManager ? this.audioManager.musicVol : 0.5,
+      this.minimapHUD.isMaximized()
+    );
 
     // Render Menus
     this.menuManager.render(ctx);
@@ -662,7 +846,6 @@ export class OverworldScene implements Scene {
     // Render Transition Screen Fade Overlay
     this.transitionManager.render(ctx);
 
-    // Render debug info
     if (this.debugMode) {
       this.renderDebug(ctx);
     }
