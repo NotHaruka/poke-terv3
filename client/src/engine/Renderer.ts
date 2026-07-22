@@ -114,10 +114,11 @@ export class Renderer {
   }
 
   /** Draw text */
-  drawText(text: string, x: number, y: number, color: string = '#ffffff', font: string = '8px monospace'): void {
+  drawText(text: string, x: number, y: number, color: string = '#ffffff', font: string = '8px monospace', align: CanvasTextAlign = 'left'): void {
     this.bufferCtx.fillStyle = color;
     this.bufferCtx.font = font;
     this.bufferCtx.textBaseline = 'top';
+    this.bufferCtx.textAlign = align;
     this.bufferCtx.fillText(text, Math.round(x), Math.round(y));
   }
 

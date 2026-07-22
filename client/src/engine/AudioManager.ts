@@ -9,31 +9,25 @@ export class AudioManager {
   private userInteracted = false;
 
   constructor() {
-    // Setup global interaction listeners to resume audio
-    const unlock = () => {
-      if (this.userInteracted) return;
+    // Persistent global interaction listeners to resume audio context and music robustly
+    const resumeAudio = () => {
       this.userInteracted = true;
       
       // Resume AudioContext if it exists
       if (this.ctx && this.ctx.state === 'suspended') {
-        this.ctx.resume().catch(err => console.error('Failed to resume audio context:', err));
+        this.ctx.resume().catch(() => {});
       }
 
-      // If there's an audio currently trying to play, try playing it again
-      if (this.currentAudio && this.currentAudio.paused) {
+      // If there's an audio currently assigned but paused, resume it
+      if (this.currentAudio && this.currentAudio.paused && this.currentTrackUrl) {
         this.currentAudio.play().catch(() => {});
       }
-
-      // Remove event listeners
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('keydown', unlock);
-      document.removeEventListener('touchstart', unlock);
     };
 
     if (typeof document !== 'undefined') {
-      document.addEventListener('click', unlock);
-      document.addEventListener('keydown', unlock);
-      document.addEventListener('touchstart', unlock);
+      document.addEventListener('click', resumeAudio);
+      document.addEventListener('keydown', resumeAudio);
+      document.addEventListener('touchstart', resumeAudio);
     }
   }
 
@@ -59,33 +53,29 @@ export class AudioManager {
       return;
     }
 
+    const oldAudio = this.currentAudio;
     this.currentTrackUrl = url;
-    
-    // If there is an existing song playing, fade it out first, then load the new one
-    if (this.currentAudio) {
-      const oldAudio = this.currentAudio;
-      this.fadeOutAndStop(oldAudio, fadeDurationMs, () => {
-        this.startNewTrack(url, fadeDurationMs);
-      });
-    } else {
-      this.startNewTrack(url, fadeDurationMs);
+
+    // Instantiating and playing the new audio immediately ensures we stay within the browser's user gesture window
+    const newAudio = new Audio(url);
+    newAudio.loop = true;
+    newAudio.volume = 0; // start silent for fade in
+    this.currentAudio = newAudio;
+
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
     }
-  }
 
-  private startNewTrack(url: string, fadeDurationMs: number): void {
-    if (this.currentTrackUrl !== url) return; // guard against rapid switches
-
-    const audio = new Audio(url);
-    audio.loop = true;
-    audio.volume = 0; // start silent for fade in
-    this.currentAudio = audio;
-
-    // Play track
-    audio.play().catch(err => {
+    newAudio.play().catch(err => {
       console.log('[Poke-ter Audio] Autoplay blocked or play failed, will play upon user interaction.', err);
     });
 
-    // Fade in
+    // Fade out and stop the old track if it exists
+    if (oldAudio) {
+      this.fadeOutAndStop(oldAudio, fadeDurationMs, () => {});
+    }
+
+    // Fade in the new audio
     let currentVol = 0;
     const steps = 20;
     const intervalTime = fadeDurationMs / steps;
@@ -94,16 +84,16 @@ export class AudioManager {
     if (this.fadeInterval) clearInterval(this.fadeInterval);
     
     this.fadeInterval = setInterval(() => {
-      if (this.currentAudio !== audio) {
+      if (this.currentAudio !== newAudio) {
         clearInterval(this.fadeInterval);
         return;
       }
       currentVol += targetVol / steps;
       if (currentVol >= targetVol) {
-        audio.volume = targetVol;
+        newAudio.volume = targetVol;
         clearInterval(this.fadeInterval);
       } else {
-        audio.volume = currentVol;
+        newAudio.volume = currentVol;
       }
     }, intervalTime);
   }

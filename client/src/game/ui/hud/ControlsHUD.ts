@@ -10,9 +10,14 @@ export class ControlsHUD {
   private isVisible: boolean = false;
   private activeToast: ToastMessage | null = null;
   private visibilityAlpha: number = 0.0;
+  private saveIndicatorTimer: number = 0;
 
   toggleVisibility(): void {
     this.isVisible = !this.isVisible;
+  }
+
+  showSaveIndicator(duration = 2.0): void {
+    this.saveIndicatorTimer = duration;
   }
 
   showToast(text: string, icon: string = 'ℹ️', duration = 2.0): void {
@@ -24,6 +29,13 @@ export class ControlsHUD {
       this.activeToast.timer -= dt / 1000;
       if (this.activeToast.timer <= 0) {
         this.activeToast = null;
+      }
+    }
+
+    if (this.saveIndicatorTimer > 0) {
+      this.saveIndicatorTimer -= dt / 1000;
+      if (this.saveIndicatorTimer < 0) {
+        this.saveIndicatorTimer = 0;
       }
     }
 
@@ -39,30 +51,74 @@ export class ControlsHUD {
     ctx: CanvasRenderingContext2D,
     isRunning: boolean,
     audioVol: number,
-    minimapExpanded: boolean
+    minimapExpanded: boolean,
+    toastY: number = 6 + 54 + 3 + 11 + 3 + 11 + 3
   ): void {
     ctx.save();
 
-    // 1. Toast Notification Rendering (Center Bottom above controls)
+    // 1. Toast Notification Rendering (Center Bottom above controls/keys chip)
     if (this.activeToast) {
-      ctx.font = '8px monospace';
+      ctx.font = '6.5px monospace';
       const toastText = `${this.activeToast.icon} ${this.activeToast.text}`;
       const textWidth = ctx.measureText(toastText).width;
-      const toastW = Math.min(GAME_WIDTH - 16, textWidth + 16);
-      const toastH = 18;
+      const toastW = Math.min(GAME_WIDTH - 12, textWidth + 12);
+      const toastH = 11;
       const toastX = (GAME_WIDTH - toastW) / 2;
-      const toastY = GAME_HEIGHT - 38;
+      const finalY = GAME_HEIGHT - 31;
 
-      ctx.fillStyle = 'rgba(10, 15, 30, 0.92)';
-      ctx.fillRect(toastX, toastY, toastW, toastH);
+      ctx.fillStyle = 'rgba(12, 18, 34, 0.92)';
+      ctx.fillRect(toastX, finalY, toastW, toastH);
       ctx.strokeStyle = '#4deeea';
       ctx.lineWidth = 1;
-      ctx.strokeRect(toastX, toastY, toastW, toastH);
+      ctx.strokeRect(toastX, finalY, toastW, toastH);
+
+      // Accent lines or corner dots
+      ctx.fillStyle = '#ff007f';
+      ctx.fillRect(toastX, finalY, 1.5, 1.5);
+      ctx.fillRect(toastX + toastW - 1.5, finalY, 1.5, 1.5);
+      ctx.fillRect(toastX, finalY + toastH - 1.5, 1.5, 1.5);
+      ctx.fillRect(toastX + toastW - 1.5, finalY + toastH - 1.5, 1.5, 1.5);
 
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(toastText, GAME_WIDTH / 2, toastY + toastH / 2);
+      ctx.fillText(toastText, GAME_WIDTH / 2, finalY + toastH / 2 + 0.5);
+    }
+
+    // 2. Render Save Indicator Logo (Top Right corner)
+    if (this.saveIndicatorTimer > 0) {
+      ctx.save();
+      const saveX = GAME_WIDTH - 42;
+      const saveY = 6;
+      const saveW = 36;
+      const saveH = 12;
+
+      // Pulse alpha between 0.5 and 1.0
+      const pulse = 0.75 + 0.25 * Math.sin(Date.now() * 0.01);
+      ctx.globalAlpha = pulse;
+
+      // Panel background
+      ctx.fillStyle = 'rgba(12, 18, 34, 0.92)';
+      ctx.fillRect(saveX, saveY, saveW, saveH);
+      ctx.strokeStyle = '#00ff66';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(saveX, saveY, saveW, saveH);
+
+      // Corner accent dots
+      ctx.fillStyle = '#00ff66';
+      ctx.fillRect(saveX, saveY, 1.5, 1.5);
+      ctx.fillRect(saveX + saveW - 1.5, saveY, 1.5, 1.5);
+      ctx.fillRect(saveX, saveY + saveH - 1.5, 1.5, 1.5);
+      ctx.fillRect(saveX + saveW - 1.5, saveY + saveH - 1.5, 1.5, 1.5);
+
+      // Text and Icon
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '5px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💾 SAVE', saveX + 4, saveY + saveH / 2 + 0.5);
+
+      ctx.restore();
     }
 
     // 2. Render small "KEYS" chip if there's any portion of it visible

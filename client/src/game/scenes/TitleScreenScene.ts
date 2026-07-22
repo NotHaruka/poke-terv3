@@ -147,20 +147,21 @@ export class TitleScreenScene implements Scene {
     const bounce = Math.sin(this.time * 0.002) * 5;
     
     // Logo text
-    this.renderer.drawText('Poke-ter', w / 2 - 40, h / 4 + bounce, '#ffffff', '16px monospace');
-    this.renderer.drawText('Online', w / 2 - 20, h / 4 + 20 + bounce, '#ffcc00', '12px monospace');
+    this.renderer.drawText('Poke-ter', w / 2, h / 4 + bounce, '#ffffff', '16px monospace', 'center');
+    this.renderer.drawText('Online', w / 2, h / 4 + 20 + bounce, '#ffcc00', '12px monospace', 'center');
 
     // Menu options
     const startY = h / 2 + 20;
     for (let i = 0; i < this.menuOptions.length; i++) {
       const y = startY + i * 20;
       const color = i === this.selectedIndex ? '#ffffff' : '#888888';
-      this.renderer.drawText(this.menuOptions[i], w / 2 - 30, y, color, '10px monospace');
+      this.renderer.drawText(this.menuOptions[i], w / 2, y, color, '10px monospace', 'center');
       
       if (i === this.selectedIndex) {
-        // Cursor
-        const cursorX = w / 2 - 45 + Math.sin(this.time * 0.01) * 2;
-        this.renderer.drawText('>', cursorX, y, '#ff0000', '10px monospace');
+        // Cursor placed elegantly 10px to the left of the option's left edge
+        const textWidth = this.renderer.measureText(this.menuOptions[i], '10px monospace');
+        const cursorX = w / 2 - textWidth / 2 - 12 + Math.sin(this.time * 0.01) * 2;
+        this.renderer.drawText('>', cursorX, y, '#ff0000', '10px monospace', 'left');
       }
     }
 

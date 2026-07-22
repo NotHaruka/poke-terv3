@@ -499,7 +499,7 @@ export class OverworldScene implements Scene {
     }, 1500);
   }
 
-  public saveGame(showToast = true): void {
+  public saveGame(showIndicator = true): void {
     const pData = this.player.getPlayerData(this.networkClient?.getId() || 'local', this.player.profile?.name || 'Trainer');
     pData.currentMap = this.currentMapId;
     const dataStr = JSON.stringify(pData);
@@ -513,8 +513,8 @@ export class OverworldScene implements Scene {
       this.networkClient.sendSaveData(pData);
     }
     
-    if (showToast) {
-      this.controlsHUD.showToast('Game saved successfully!', '💾', 3.0);
+    if (showIndicator) {
+      this.controlsHUD.showSaveIndicator(2.0);
     }
   }
 
@@ -607,8 +607,7 @@ export class OverworldScene implements Scene {
     this.autosaveTimer += dt;
     if (this.autosaveTimer >= 30000) {
       this.autosaveTimer = 0;
-      this.saveGame(false);
-      this.controlsHUD.showToast('Autosaved game progress', '💾', 1.5);
+      this.saveGame(true);
     }
     
     // Keybind shortcut: E key opens Main Menu
@@ -1172,7 +1171,8 @@ export class OverworldScene implements Scene {
       ctx,
       this.inputManager.isShiftHeld(),
       this.audioManager ? this.audioManager.musicVol : 0.5,
-      this.minimapHUD.isMaximized()
+      this.minimapHUD.isMaximized(),
+      biomeY + biomeH + 3
     );
 
     // Render Menus
