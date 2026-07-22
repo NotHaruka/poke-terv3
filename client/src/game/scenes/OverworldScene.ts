@@ -11,6 +11,7 @@ import { ChunkManager } from '../world/ChunkManager.js';
 import { UIManager } from '../ui/UIManager.js';
 import { NetworkClient } from '../network/NetworkClient.js';
 import { envSystem } from '../../engine/EnvironmentSystem.js';
+import { AudioManager } from '../../engine/AudioManager.js';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -37,6 +38,7 @@ export class OverworldScene implements Scene {
   private chunkManager: ChunkManager;
   private uiManager: UIManager;
   private networkClient: NetworkClient | null;
+  private audioManager: AudioManager | null = null;
   private debugMode = false;
   
   // Banner state
@@ -62,10 +64,11 @@ export class OverworldScene implements Scene {
   // Warp control
   private isWarping: boolean = false;
 
-  constructor(renderer: Renderer, inputManager: InputManager, networkClient: NetworkClient | null = null) {
+  constructor(renderer: Renderer, inputManager: InputManager, networkClient: NetworkClient | null = null, audioManager: AudioManager | null = null) {
     this.renderer = renderer;
     this.inputManager = inputManager;
     this.networkClient = networkClient;
+    this.audioManager = audioManager;
     this.camera = new Camera();
     this.collisionSystem = new CollisionSystem();
     this.particleSystem = new ParticleSystem();
@@ -190,10 +193,21 @@ export class OverworldScene implements Scene {
 
     this.bannerAlpha = 1;
     this.bannerTimer = 3; // Show for 3 seconds
+    this.updateBackgroundMusic();
+  }
+
+  private updateBackgroundMusic() {
+    if (!this.audioManager) return;
+    if (this.currentMapId === 'city') {
+      this.audioManager.playMusic('/morning_in_the_village.mp3');
+    } else {
+      this.audioManager.playMusic('/lanterns_at_home.mp3');
+    }
   }
 
   init(): void {
     this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
+    this.setMap(this.currentMapId);
   }
 
   private getNPCInFront(): NPCDefinition | null {
@@ -254,6 +268,15 @@ export class OverworldScene implements Scene {
     // Toggle debug mode with F3
     if (this.inputManager.justPressed('F3')) {
       this.debugMode = !this.debugMode;
+    }
+
+    // Toggle background music mute/unmute with 'KeyN'
+    if (this.inputManager.justPressed('KeyN') && this.audioManager) {
+      if (this.audioManager.musicVol > 0) {
+        this.audioManager.setMusicVolume(0);
+      } else {
+        this.audioManager.setMusicVolume(0.5);
+      }
     }
 
     // Dialogue State Machine
@@ -560,16 +583,18 @@ export class OverworldScene implements Scene {
   }
 
   private renderDebug(ctx: CanvasRenderingContext2D): void {
+    const musicStatus = this.audioManager ? (this.audioManager.musicVol > 0 ? `${Math.round(this.audioManager.musicVol * 100)}%` : 'MUTED') : 'N/A';
     const debugInfo = [
       `Map: ${this.currentMapId}`,
       `Pos: ${Math.floor(this.player.x)}, ${Math.floor(this.player.y)}`,
       `Dir: ${this.player.direction}`,
       `Biome: ${this.lastBiomeName}`,
       `Other Players: ${this.otherPlayers.size}`,
+      `Music [N]: ${musicStatus}`,
     ];
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(0, 0, 120, debugInfo.length * 12 + 4);
+    ctx.fillRect(0, 0, 130, debugInfo.length * 12 + 4);
 
     ctx.fillStyle = '#00ff00';
     ctx.font = '8px monospace';

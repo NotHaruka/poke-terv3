@@ -4,7 +4,7 @@ An infinite-world, multiplayer, real-time procedural monster catching and roamin
 
 ---
 
-## 🌟 Core Features
+## Core Features
 
 - **Infinite Procedural World**: Real-time deterministic chunk generation using noise maps and seed values.
 - **Seamless Multiplayer**: High-performance WebSocket-based server synchronization supporting multiple maps, real-time broadcasts, and dynamic player joins/leaves.
@@ -13,7 +13,7 @@ An infinite-world, multiplayer, real-time procedural monster catching and roamin
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 ├── client/          # Frontend client application (Vite, HTML Canvas, Game Engine)
@@ -43,7 +43,7 @@ An infinite-world, multiplayer, real-time procedural monster catching and roamin
 
 ---
 
-## ⚡ Recent Synchronization & Stability Enhancements
+## Recent Synchronization & Stability Enhancements
 
 We recently implemented several critical client-server synchronization improvements to eliminate latency bottlenecks and server-client drift:
 
@@ -56,7 +56,7 @@ We recently implemented several critical client-server synchronization improveme
 
 ---
 
-## 🛠️ Getting Started
+## Getting Started
 
 ### Development Mode
 Runs Vite dev server alongside the WebSocket server with hot reloading enabled on both sides.
@@ -75,4 +75,5 @@ Launches the full-stack server serving the production client assets.
 ```bash
 npm run start
 ```
+
 
