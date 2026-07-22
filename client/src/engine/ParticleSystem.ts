@@ -1,4 +1,4 @@
-export type PartType = 'rect' | 'leaf' | 'bird' | 'dust';
+export type PartType = 'rect' | 'leaf' | 'bird' | 'dust' | 'sparkle';
 interface Part { x: number; y: number; vx: number; vy: number; life: number; max: number; sz: number; col: string; type: PartType; }
 export class ParticleSystem {
   private list: Part[] = [];
@@ -34,6 +34,10 @@ export class ParticleSystem {
           ctx.lineTo(px - 2, py - wing);
           ctx.lineTo(px + 2, py - wing);
           ctx.fill();
+      } else if (p.type === 'sparkle') {
+          const s = Math.max(1, Math.round(p.sz)) + Math.sin(p.life * 0.4) * 1; // twinkle
+          ctx.fillRect(px + s / 2 - 0.5, py - s / 2, 1, s * 2); // vertical spoke
+          ctx.fillRect(px - s / 2, py + s / 2 - 0.5, s * 2, 1); // horizontal spoke
       } else {
           ctx.fillRect(px, py, Math.max(1, Math.round(p.sz)), Math.max(1, Math.round(p.sz)));
       }

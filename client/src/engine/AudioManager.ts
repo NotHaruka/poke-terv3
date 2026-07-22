@@ -4,24 +4,50 @@ export class AudioManager {
   public sfxVol = 1.0;
 
   private currentTrackUrl: string | null = null;
+  private pendingMusicUrl: string | null = null;
   private currentAudio: HTMLAudioElement | null = null;
   private fadeInterval: any = null;
-  private userInteracted = false;
+  public userInteracted = false;
 
   constructor() {
     // Persistent global interaction listeners to resume audio context and music robustly
     const resumeAudio = () => {
+      if (this.userInteracted) return;
       this.userInteracted = true;
       
-      // Resume AudioContext if it exists
+      // Resume AudioContext if it exists or initialize one
       if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      } else if (!this.ctx && typeof AudioContext !== 'undefined') {
+        this.ctx = new AudioContext();
         this.ctx.resume().catch(() => {});
       }
 
-      // If there's an audio currently assigned but paused, resume it
-      if (this.currentAudio && this.currentAudio.paused && this.currentTrackUrl) {
-        this.currentAudio.play().catch(() => {});
+      if (this.pendingMusicUrl) {
+        const url = this.pendingMusicUrl;
+        this.pendingMusicUrl = null;
+        this.playMusic(url);
+      } else if (this.currentAudio && this.currentTrackUrl) {
+        if (this.currentAudio.paused) {
+          this.currentAudio.play().catch(() => {
+            if (this.currentTrackUrl) this.playMusic(this.currentTrackUrl);
+          });
+        }
+      } else if (this.currentTrackUrl) {
+        const url = this.currentTrackUrl;
+        this.currentTrackUrl = null;
+        this.playMusic(url);
+      } else {
+        this.playMusic('/sunlit_safari.mp3');
       }
+
+      // Play a delightful tiny greeting chime on first unlock!
+      this.playFanfare();
+
+      // Remove event listeners once unlocked
+      document.removeEventListener('click', resumeAudio);
+      document.removeEventListener('keydown', resumeAudio);
+      document.removeEventListener('touchstart', resumeAudio);
     };
 
     if (typeof document !== 'undefined') {
@@ -48,7 +74,13 @@ export class AudioManager {
   }
 
   playMusic(url: string, fadeDurationMs = 1200): void {
-    if (this.currentTrackUrl === url) {
+    if (!this.userInteracted) {
+      this.currentTrackUrl = url;
+      this.pendingMusicUrl = url;
+      return;
+    }
+
+    if (this.currentTrackUrl === url && this.currentAudio && !this.currentAudio.paused) {
       // Already playing this song!
       return;
     }
@@ -68,6 +100,7 @@ export class AudioManager {
 
     newAudio.play().catch(err => {
       console.log('[Poke-ter Audio] Autoplay blocked or play failed, will play upon user interaction.', err);
+      this.pendingMusicUrl = url;
     });
 
     // Fade out and stop the old track if it exists

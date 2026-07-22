@@ -104,10 +104,10 @@ export class Player {
     // Determine target speed based on shift
     if (this.inputManager.isShiftHeld()) {
       this.maxSpeed = PLAYER_WALK_SPEED * 1.5; // ~1.5x walking speed for running
-      if (this.state !== PlayerState.MenuOpen) this.state = PlayerState.Running;
+      this.state = PlayerState.Running;
     } else {
       this.maxSpeed = PLAYER_WALK_SPEED;
-      if (this.state !== PlayerState.MenuOpen) this.state = PlayerState.Walking;
+      this.state = PlayerState.Walking;
     }
 
     // Get input direction

@@ -1,6 +1,6 @@
 /** Strongly typed network packet definitions */
 
-import { PlayerProfile, PlayerData } from './types';
+import { PlayerProfile, PlayerData } from './types.js';
 
 export enum PacketType {
   // Connection

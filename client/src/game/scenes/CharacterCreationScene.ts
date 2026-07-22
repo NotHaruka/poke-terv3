@@ -17,7 +17,7 @@ export class CharacterCreationScene implements Scene {
   private renderer: Renderer;
   private inputManager: InputManager;
   private networkClient: NetworkClient | null;
-  private audioManager: AudioManager;
+  private audioManager: AudioManager | null;
 
   private step: CreationStep = CreationStep.Name;
   private time = 0;
@@ -74,7 +74,7 @@ export class CharacterCreationScene implements Scene {
     renderer: Renderer,
     inputManager: InputManager,
     networkClient: NetworkClient | null,
-    audioManager: AudioManager
+    audioManager: AudioManager | null
   ) {
     this.renderer = renderer;
     this.inputManager = inputManager;

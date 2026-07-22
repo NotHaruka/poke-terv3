@@ -1,5 +1,6 @@
 import { Menu } from './Menu.js';
 import { GAME_WIDTH, GAME_HEIGHT } from 'poke-ter-shared';
+import { MONSTER_SPECIES } from '../../monsters/MonsterData.js';
 import { Player } from '../../entities/Player.js';
 
 export interface ItemData {
@@ -30,7 +31,7 @@ export class BackpackMenu extends Menu {
           if (p.party && p.party.length > 0) {
             const first = p.party[0];
             first.currentHp = Math.min(first.maxHp, first.currentHp + 20);
-            return `Used Potion on ${first.nickname || first.species}! HP restored.`;
+            return `Used Potion on ${first.nickname || MONSTER_SPECIES.find(s => s.id === first.speciesId)?.name || 'Monster'}! HP restored.`;
           }
           return 'Used Potion! Party fully energized.';
         }
@@ -44,7 +45,7 @@ export class BackpackMenu extends Menu {
           if (p.party && p.party.length > 0) {
             const first = p.party[0];
             first.currentHp = Math.min(first.maxHp, first.currentHp + 50);
-            return `Used Super Potion on ${first.nickname || first.species}!`;
+            return `Used Super Potion on ${first.nickname || MONSTER_SPECIES.find(s => s.id === first.speciesId)?.name || 'Monster'}!`;
           }
           return 'Used Super Potion!';
         }
@@ -95,7 +96,7 @@ export class BackpackMenu extends Menu {
           if (p.party && p.party.length > 0) {
             const first = p.party[0];
             first.currentHp = Math.min(first.maxHp, first.currentHp + 10);
-            return `Fed Oran Berry to ${first.nickname || first.species}!`;
+            return `Fed Oran Berry to ${first.nickname || MONSTER_SPECIES.find(s => s.id === first.speciesId)?.name || 'Monster'}!`;
           }
           return 'Ate Oran Berry!';
         }

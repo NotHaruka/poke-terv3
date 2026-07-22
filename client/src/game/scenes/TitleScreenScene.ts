@@ -11,7 +11,7 @@ export class TitleScreenScene implements Scene {
   private renderer: Renderer;
   private inputManager: InputManager;
   private networkClient: NetworkClient | null;
-  private audioManager: AudioManager;
+  private audioManager: AudioManager | null;
 
   private menuOptions: string[] = [];
   private selectedIndex = 0;
@@ -22,7 +22,7 @@ export class TitleScreenScene implements Scene {
     renderer: Renderer,
     inputManager: InputManager,
     networkClient: NetworkClient | null,
-    audioManager: AudioManager
+    audioManager: AudioManager | null
   ) {
     this.renderer = renderer;
     this.inputManager = inputManager;
@@ -163,6 +163,11 @@ export class TitleScreenScene implements Scene {
         const cursorX = w / 2 - textWidth / 2 - 12 + Math.sin(this.time * 0.01) * 2;
         this.renderer.drawText('>', cursorX, y, '#ff0000', '10px monospace', 'left');
       }
+    }
+
+    // Audio interaction prompt
+    if (this.audioManager && !this.audioManager.userInteracted) {
+      this.renderer.drawText('Click or press any key to play sound 🎵', w / 2, h - 14, '#ffcc00', '7px monospace', 'center');
     }
 
     ctx.restore();

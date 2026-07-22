@@ -41,4 +41,4 @@ export { BuildingRenderer } from './rendering/BuildingRenderer.js';
 export { FurnitureRenderer } from './rendering/FurnitureRenderer.js';
 export { TileRenderer } from './rendering/TileRenderer.js';
 export { ChunkRenderer } from './rendering/ChunkRenderer.js';
-export { UIRegistry as UIRendererRegistry, UIRenderer } from './rendering/UIRenderer.js';
+export { UIRenderer } from './rendering/UIRenderer.js';

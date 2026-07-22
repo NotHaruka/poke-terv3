@@ -19,6 +19,7 @@ export type FurnitureType =
   | 'barrel'
   | 'mirror'
   | 'tactical_map'
+  | 'starter_pod'
   | 'decor';
 
 export interface FurnitureItem {

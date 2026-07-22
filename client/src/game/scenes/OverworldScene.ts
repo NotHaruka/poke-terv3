@@ -564,6 +564,7 @@ export class OverworldScene implements Scene {
     // Update other players' follower companion monsters
     for (const [opId, op] of this.otherPlayers) {
       if (op.activeMonster) {
+        const activeMon = op.activeMonster;
         let follower = this.otherFollowers.get(opId);
         if (!follower) {
           follower = new FollowerMonster(op.position.x, op.position.y + 18);
@@ -571,7 +572,7 @@ export class OverworldScene implements Scene {
           console.log(`[Multiplayer] Spawning missing active companion for ${op.username}`);
         }
 
-        const species = MONSTER_SPECIES.find(s => s.id === op.activeMonster.speciesId);
+        const species = MONSTER_SPECIES.find(s => s.id === activeMon.speciesId);
         const monsterType = species ? species.types[0] : 0;
         const speciesName = species ? species.name : 'Monster';
 
@@ -883,9 +884,10 @@ export class OverworldScene implements Scene {
         });
 
         if (op.activeMonster) {
+          const activeMon = op.activeMonster;
           const follower = this.otherFollowers.get(opId);
           if (follower) {
-            const species = MONSTER_SPECIES.find(s => s.id === op.activeMonster.speciesId);
+            const species = MONSTER_SPECIES.find(s => s.id === activeMon.speciesId);
             if (species) {
               drawables.push({
                 sortY: follower.y + 16,
@@ -894,11 +896,11 @@ export class OverworldScene implements Scene {
                     ctx,
                     offsetX,
                     offsetY,
-                    op.activeMonster!.speciesId,
-                    op.activeMonster!.nickname || species.name,
-                    op.activeMonster!.level,
-                    op.activeMonster!.currentHp,
-                    op.activeMonster!.maxHp,
+                    activeMon.speciesId,
+                    activeMon.nickname || species.name,
+                    activeMon.level,
+                    activeMon.currentHp,
+                    activeMon.maxHp,
                     this.totalAnimTime
                   );
                 }
@@ -983,9 +985,10 @@ export class OverworldScene implements Scene {
         });
 
         if (op.activeMonster) {
+          const activeMon = op.activeMonster;
           const follower = this.otherFollowers.get(opId);
           if (follower) {
-            const species = MONSTER_SPECIES.find(s => s.id === op.activeMonster.speciesId);
+            const species = MONSTER_SPECIES.find(s => s.id === activeMon.speciesId);
             if (species) {
               drawables.push({
                 sortY: follower.y + 16,
@@ -994,11 +997,11 @@ export class OverworldScene implements Scene {
                     ctx,
                     offsetX,
                     offsetY,
-                    op.activeMonster!.speciesId,
-                    op.activeMonster!.nickname || species.name,
-                    op.activeMonster!.level,
-                    op.activeMonster!.currentHp,
-                    op.activeMonster!.maxHp,
+                    activeMon.speciesId,
+                    activeMon.nickname || species.name,
+                    activeMon.level,
+                    activeMon.currentHp,
+                    activeMon.maxHp,
                     this.totalAnimTime
                   );
                 }

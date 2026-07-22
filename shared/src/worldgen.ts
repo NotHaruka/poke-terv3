@@ -181,7 +181,7 @@ export class MoistureGenerator {
 export class TemperatureGenerator {
   static getTemperature(gx: number, gy: number, seed: number, elevation: number): number {
     const rawTemp = fbm2D(gx, gy, seed + 4000, 3, 0.025);
-    return rawTemp - (elevation - 0.38) * 0.5;
+    return rawTemp - (elevation - 0.38) * 0.2;
   }
 }
 
@@ -1246,8 +1246,13 @@ function townChunkForCell(cellX: number, cellY: number, seed: number): ChunkCoor
   const cacheKey = `${cellX}_${cellY}_${seed}`;
   if (townChunkCellCache[cacheKey]) return townChunkCellCache[cacheKey];
 
-  let bestCx = cellX * TOWN_CHUNK_SPACING;
-  let bestCy = cellY * TOWN_CHUNK_SPACING;
+  // Sentinel: if no candidate passes the bounds check (every candidate for
+  // this cell landed outside the valid 1-14 chunk range), there is no town
+  // in this cell at all. NaN can never equal any real integer chunk
+  // coordinate, so isTownChunk's cx===town.cx check always safely fails
+  // instead of accidentally matching an unbounded, unchecked position.
+  let bestCx = NaN;
+  let bestCy = NaN;
   let maxScore = -999999;
 
   for (let cand = 0; cand < 5; cand++) {
