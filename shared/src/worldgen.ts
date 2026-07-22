@@ -949,7 +949,7 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
   const cDesertTree = '#c29b53';
   const cDesertTallGrass = '#b59247';
 
-  const cPlainsBg = '#c4a86a';
+  const cPlainsBg = '#5c9c4f'; // was a muddy tan — kept green so path tiles don't look like bare dirt
   const cPlainsGrass = '#4a8c3f';
   const cPlainsTree = '#2d5a1e';
   const cPlainsTallGrass = '#3a7c2f';
