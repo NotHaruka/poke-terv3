@@ -41,7 +41,7 @@ class PokeTerGame {
     this.tryConnect();
 
     // Start with overworld scene
-    const overworld = new OverworldScene(this.renderer, this.inputManager, this.networkClient);
+    const overworld = new OverworldScene(this.renderer, this.inputManager, this.networkClient, this.audioManager);
     this.sceneManager.push(overworld);
 
     // Start the game loop

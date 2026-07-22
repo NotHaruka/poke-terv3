@@ -188,9 +188,7 @@ export class TemperatureGenerator {
 export class BiomeGenerator {
   static determineBiome(elevation: number, moisture: number, temp: number): string {
     if (elevation < 0.33) return 'lake';
-    if (elevation > 0.82) {
-      return temp < 0.15 ? 'ice_peak' : 'mountain';
-    }
+    if (elevation > 0.82) return 'ice_peak'; // all high ground is now one identity — no more separate warm/brown "mountain"
     if (temp < 0.12) return 'tundra';
 
     if (moisture > 0.55) {
@@ -809,7 +807,7 @@ export class DecorationGenerator {
       } else if (biomeId === 'desert') {
         if (h < 0.05) return DecorationType.PEBBLE;
         if (h < 0.08) return DecorationType.REEDS;
-      } else if (biomeId === 'mountain') {
+      } else if (biomeId === 'ice_peak') {
         if (h < 0.08) return DecorationType.PEBBLE;
         if (h < 0.12) return DecorationType.BUSH;
       }
@@ -881,12 +879,12 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     }
     if (landmark === TILE_MOUNTAIN) {
       const biome: BiomeInfo = {
-        id: 'mountain',
-        name: 'Craggy Highlands',
-        bgColor: '#5a4a35',
-        grassColor: '#6c5b45',
-        treeColor: '#2d4d2d',
-        tallGrassColor: '#4a7a4a',
+        id: 'ice_peak',
+        name: 'Frozen Summit',
+        bgColor: '#c9dbe8',
+        grassColor: '#dbe9f2',
+        treeColor: '#4a6b7a',
+        tallGrassColor: '#a8c8d8',
       };
       biomeCache[cacheKey] = biome;
       return biome;
@@ -984,37 +982,31 @@ export function getBiomeAt(gx: number, gy: number, seed: number, mapId: string =
     normalTallGrass = lerpColor(cPlainsTallGrass, cForestTallGrass, t);
   }
 
-  // Mountain palette (Craggy Highlands)
-  const mtnBg = '#5a4a35', mtnGrass = '#6c5b45', mtnTree = '#2d4d2d', mtnTallGrass = '#4a7a4a';
   // Tundra palette (Frostbound Tundra)
   const tunBg = '#e2edf2', tunGrass = '#eef5f8', tunTree = '#6b8a9a', tunTallGrass = '#b8d4e0';
-  // Ice peak palette (Frozen Summit)
+  // Ice peak palette (Frozen Summit) — the only "high ground" identity now;
+  // there's no separate brown "mountain" palette to blend toward anymore.
   const iceBg = '#c9dbe8', iceGrass = '#dbe9f2', iceTree = '#4a6b7a', iceTallGrass = '#a8c8d8';
 
-  // Bilinear blend: warm-row = lerp(normal, mountain, mountainFactor),
-  // cold-row = lerp(tundra, ice_peak, mountainFactor), then blend the two
-  // rows by coldFactor.
-  const warmBg = lerpColor(normalBg, mtnBg, mountainFactor);
-  const warmGrass = lerpColor(normalGrass, mtnGrass, mountainFactor);
-  const warmTree = lerpColor(normalTree, mtnTree, mountainFactor);
-  const warmTallGrass = lerpColor(normalTallGrass, mtnTallGrass, mountainFactor);
+  // Step 1: elevation trends normal terrain toward icy peak colors as it
+  // climbs (replacing the old normal->mountain blend).
+  const elevBg = lerpColor(normalBg, iceBg, mountainFactor);
+  const elevGrass = lerpColor(normalGrass, iceGrass, mountainFactor);
+  const elevTree = lerpColor(normalTree, iceTree, mountainFactor);
+  const elevTallGrass = lerpColor(normalTallGrass, iceTallGrass, mountainFactor);
 
-  const coldRowBg = lerpColor(tunBg, iceBg, mountainFactor);
-  const coldRowGrass = lerpColor(tunGrass, iceGrass, mountainFactor);
-  const coldRowTree = lerpColor(tunTree, iceTree, mountainFactor);
-  const coldRowTallGrass = lerpColor(tunTallGrass, iceTallGrass, mountainFactor);
-
-  const bgColor = lerpColor(warmBg, coldRowBg, coldFactor);
-  const grassColor = lerpColor(warmGrass, coldRowGrass, coldFactor);
-  const treeColor = lerpColor(warmTree, coldRowTree, coldFactor);
-  const tallGrassColor = lerpColor(warmTallGrass, coldRowTallGrass, coldFactor);
+  // Step 2: temperature separately trends toward tundra colors, independent
+  // of elevation — a cold lowland goes pale/frosty even nowhere near a peak.
+  const bgColor = lerpColor(elevBg, tunBg, coldFactor);
+  const grassColor = lerpColor(elevGrass, tunGrass, coldFactor);
+  const treeColor = lerpColor(elevTree, tunTree, coldFactor);
+  const tallGrassColor = lerpColor(elevTallGrass, tunTallGrass, coldFactor);
 
   const result: BiomeInfo = {
     id: biomeId,
     name:
       biomeId === 'forest' ? 'Ancient Grove' :
       biomeId === 'desert' ? 'Sandy Wasteland' :
-      biomeId === 'mountain' ? 'Craggy Highlands' :
       biomeId === 'ice_peak' ? 'Frozen Summit' :
       biomeId === 'tundra' ? 'Frostbound Tundra' :
       'Grassland Plains',
@@ -1642,8 +1634,8 @@ export function getNPCsForMap(mapId: string, seed: number): NPCDefinition[] {
             name = 'Miner Brock';
             sprite = 'craftsman';
             dialogueLines = [
-              { speaker: 'Miner Brock', text: "Greetings, trainer! This rocky mountain camp is situated high in the Craggy Highlands." },
-              { speaker: 'Miner Brock', text: "Beware of sudden cliff faces and steep drops! Rock-type monsters thrive in these craggy crevices." }
+              { speaker: 'Miner Brock', text: "Greetings, trainer! This mining camp sits high up in the Frozen Summit." },
+              { speaker: 'Miner Brock', text: "Beware of sudden cliff faces and steep, icy drops! Ice-type monsters thrive up here in the cold." }
             ];
           }
 

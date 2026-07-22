@@ -244,8 +244,8 @@ export class OverworldScene implements Scene {
       const pY = this.camera.getY() + Math.random() * GAME_HEIGHT;
       if (this.lastBiomeName.toLowerCase().includes('forest')) {
         this.particleSystem.emit(pX, pY, 1, ['#8bbf40', '#6aa32a'], 0.5, 20, 60, 'leaf'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#555555'], 2, 40, 100, 'bird');
-      } else if (this.lastBiomeName.toLowerCase().includes('mountain')) {
-        this.particleSystem.emit(pX, pY, 1, ['#aaaaaa', '#cccccc'], 0.8, 10, 40, 'dust'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#ffffff', '#eeeeee'], 2, 40, 100, 'bird');
+      } else if (this.lastBiomeName.toLowerCase().includes('frozen') || this.lastBiomeName.toLowerCase().includes('tundra')) {
+        this.particleSystem.emit(pX, pY, 1, ['#ffffff', '#e8f2f8'], 0.6, 15, 50, 'dust');
       } else if (this.lastBiomeName.toLowerCase().includes('city')) {
         this.particleSystem.emit(pX, pY, 1, ['#888888', '#555555'], 0.2, 5, 80, 'dust'); if(Math.random()<0.05) this.particleSystem.emit(pX, pY, 1, ['#222222', '#111111'], 2, 40, 100, 'bird');
       }
