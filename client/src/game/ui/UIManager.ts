@@ -113,35 +113,133 @@ export class UIManager {
     ctx.fillRect(x + 4, y + padding + selectedIndex * itemHeight + 4, 2, 8);
   }
 
-  /** Draw a dialogue box */
-  drawDialogue(ctx: CanvasRenderingContext2D, text: string, speaker?: string): void {
-    const boxHeight = 48;
-    const y = GAME_HEIGHT - boxHeight - 8;
+  // Typewriter dialogue state
+  private typewriterText: string = '';
+  private typewriterSpeaker: string = '';
+  private typewriterCharIndex: number = 0;
+  private typewriterTimer: number = 0;
+  private typewriterSpeed: number = 40; // chars per second
+  private animTime: number = 0;
 
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(8, y, GAME_WIDTH - 16, boxHeight);
+  /** Draw a FireRed-style typewriter dialogue box with word wrapping */
+  drawDialogue(ctx: CanvasRenderingContext2D, text: string, speaker?: string, dt: number = 16): void {
+    this.animTime += dt / 1000;
 
-    // Border
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(8, y, GAME_WIDTH - 16, boxHeight);
-
-    // Speaker name
-    if (speaker) {
-      ctx.fillStyle = '#ffcc00';
-      ctx.font = '8px monospace';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(speaker, 16, y + 4);
+    // Reset typewriter if text changed
+    if (this.typewriterText !== text || this.typewriterSpeaker !== (speaker || '')) {
+      this.typewriterText = text;
+      this.typewriterSpeaker = speaker || '';
+      this.typewriterCharIndex = 0;
+      this.typewriterTimer = 0;
     }
 
-    // Text
+    // Advance typewriter letter count
+    if (this.typewriterCharIndex < text.length) {
+      this.typewriterTimer += dt / 1000;
+      this.typewriterCharIndex = Math.min(text.length, Math.floor(this.typewriterTimer * this.typewriterSpeed));
+    }
+
+    const boxWidth = GAME_WIDTH - 24;
+    const boxHeight = 52;
+    const x = 12;
+    const y = GAME_HEIGHT - boxHeight - 8;
+
+    ctx.save();
+
+    // FireRed Outer Box (Dark Navy Frame)
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.95)';
+    ctx.fillRect(x, y, boxWidth, boxHeight);
+
+    // Inner White/Cream Accent Border
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 2, y + 2, boxWidth - 4, boxHeight - 4);
+
+    ctx.strokeStyle = '#3a4a6b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, boxWidth, boxHeight);
+
+    // Speaker Badge
+    if (speaker) {
+      const badgeW = Math.max(60, ctx.measureText(speaker).width + 16);
+      const badgeH = 14;
+      const badgeX = x + 8;
+      const badgeY = y - 10;
+
+      ctx.fillStyle = '#2a1a08';
+      ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+      ctx.strokeStyle = '#ffcc00';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+
+      ctx.fillStyle = '#ffcc00';
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(speaker, badgeX + badgeW / 2, badgeY + badgeH / 2);
+    }
+
+    // Wrap full text to determine line breaks
+    ctx.font = '8.5px monospace';
+    const maxTextWidth = boxWidth - 28;
+    const currentSubstring = text.substring(0, this.typewriterCharIndex);
+    const wrappedLines = this.wrapText(ctx, currentSubstring, maxTextWidth);
+
+    // Draw up to 2 lines per box
     ctx.fillStyle = '#ffffff';
-    ctx.font = '8px monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(text, 16, y + (speaker ? 16 : 8));
+
+    const startY = y + (speaker ? 10 : 12);
+    const lineHeight = 13;
+
+    for (let i = 0; i < Math.min(2, wrappedLines.length); i++) {
+      ctx.fillText(wrappedLines[i], x + 12, startY + i * lineHeight);
+    }
+
+    // Bouncing FireRed Arrow Prompt (▼) when typewriter finishes
+    if (this.typewriterCharIndex >= text.length) {
+      const bounceY = Math.sin(this.animTime * 10) * 2;
+      ctx.fillStyle = '#ff3366';
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('▼', x + boxWidth - 10, y + boxHeight - 4 + bounceY);
+    }
+
+    ctx.restore();
+  }
+
+  /** Check if current typewriter line has finished generating */
+  isDialogueComplete(): boolean {
+    return this.typewriterCharIndex >= this.typewriterText.length;
+  }
+
+  /** Instantly reveal full text of current line */
+  finishDialogueLine(): void {
+    this.typewriterCharIndex = this.typewriterText.length;
+  }
+
+  /** Word wrap helper method */
+  private wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+    return lines;
   }
 
   /** Draw a text overlay in the center of the screen */

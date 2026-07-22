@@ -23,6 +23,14 @@ export class Player {
   direction: Direction = 'down';
   moving = false;
   profile?: PlayerProfile;
+  party: import('poke-ter-shared').MonsterInstance[] = [];
+  money: number = 500;
+  inventory: { itemId: number; quantity: number }[] = [
+    { itemId: 1, quantity: 10 },
+    { itemId: 3, quantity: 5 }
+  ];
+  hasStarter: boolean = false;
+  activeFollowerIndex: number = 0;
   private inputManager: InputManager;
   private collisionSystem: CollisionSystem;
 

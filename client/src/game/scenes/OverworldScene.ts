@@ -44,6 +44,14 @@ import { InteriorManager } from '../../engine/interiors/InteriorManager.js';
 import { TransitionManager } from '../../engine/doors/TransitionManager.js';
 import { DoorSystem } from '../../engine/doors/DoorSystem.js';
 
+// Gameplay & Overworld Combat imports
+import { FollowerMonster } from '../entities/FollowerMonster.js';
+import { OverworldCombatManager } from '../combat/OverworldCombatManager.js';
+import { StarterSelectModal } from '../ui/menus/StarterSelectModal.js';
+import { PokemartMenu } from '../ui/menus/PokemartMenu.js';
+import { MONSTER_SPECIES } from '../monsters/MonsterData.js';
+import { TitleScreenScene } from './TitleScreenScene.js';
+
 // QoL HUD imports
 import { MinimapHUD, MinimapMarker } from '../ui/hud/MinimapHUD.js';
 import { DirectionalPointer } from '../ui/hud/DirectionalPointer.js';
@@ -105,6 +113,11 @@ export class OverworldScene implements Scene {
   private clockManager: ClockManager;
   private playTimeMs: number = 0;
 
+  // Active Companion Follower & Overworld Combat
+  private followerMonster: FollowerMonster;
+  private combatManager: OverworldCombatManager;
+  private totalAnimTime: number = 0;
+
   constructor(
     renderer: Renderer,
     inputManager: InputManager,
@@ -143,6 +156,10 @@ export class OverworldScene implements Scene {
       this.player,
       this.camera
     );
+
+    // Active Companion & Combat Setup
+    this.followerMonster = new FollowerMonster(this.player.x, this.player.y + 18);
+    this.combatManager = new OverworldCombatManager(this.player, this.particleSystem);
     
     if (this.networkClient) {
       this.networkClient.on(PacketType.Welcome, this.onWelcome);
@@ -329,6 +346,9 @@ export class OverworldScene implements Scene {
       const playerGy = Math.floor(this.player.y / 16);
       const currentBiome = getBiomeAt(playerGx, playerGy, seed);
       this.lastBiomeName = currentBiome.name;
+
+      // Spawn wild roaming monsters for route maps
+      this.combatManager.populateRouteMonsters(mapId, 6);
     }
 
     for (const c of this.npcColliders) {
@@ -373,9 +393,18 @@ export class OverworldScene implements Scene {
   }
 
   init(): void {
-    this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
-    this.setMap(this.currentMapId);
-    this.controlsHUD.showToast('Welcome to Poke-ter!', '✨', 3.0);
+    if (!this.player.hasStarter) {
+      // Spawn player directly inside Professor's Research Lab in front of the 3 Starter Pods
+      this.doorSystem.enterBuilding('lab_interior', 'city', 117, 113);
+      this.player.x = 6 * 16;
+      this.player.y = 5 * 16;
+      this.player.direction = 'up';
+      this.controlsHUD.showToast('Welcome! Go inspect the 3 Capture Pods in the Lab to choose your starter!', '🐾', 5.0);
+    } else {
+      this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
+      this.setMap(this.currentMapId);
+      this.controlsHUD.showToast('Welcome back to Poke-ter!', '✨', 3.0);
+    }
   }
 
   private getNPCInFront(): NPCDefinition | null {
@@ -405,6 +434,13 @@ export class OverworldScene implements Scene {
   }
 
   private warpToMap(targetMapId: string) {
+    // Route restriction check: Prevent players from leaving for Routes 1-4 until they pick a starter
+    if (targetMapId.startsWith('route_') && !this.player.hasStarter) {
+      this.controlsHUD.showToast('Professor Elm: Hold on! Choose a starter Pokémon in the Research Lab first!', '🛑', 4.0);
+      if (this.audioManager) this.audioManager.playSFX('cancel');
+      return;
+    }
+
     this.isWarping = true;
     this.networkClient?.send({
       type: PacketType.MapChangeRequest,
@@ -417,6 +453,7 @@ export class OverworldScene implements Scene {
   }
 
   update(dt: number): void {
+    this.totalAnimTime += dt;
     this.playTimeMs += dt;
     this.clockManager.update(dt);
     this.transitionManager.update(dt);
@@ -424,6 +461,39 @@ export class OverworldScene implements Scene {
     this.minimapHUD.update(dt);
     
     this.menuManager.update(dt);
+    
+    // Combat Manager update
+    this.combatManager.update(dt);
+
+    // Overworld combat hotkeys (1, 2, 3 = moves, 4 = capture pod)
+    if (!this.menuManager.isOpen() && !this.isDialogueActive) {
+      if (this.inputManager.justPressed('Digit1')) this.combatManager.triggerPlayerAttack(0);
+      if (this.inputManager.justPressed('Digit2')) this.combatManager.triggerPlayerAttack(1);
+      if (this.inputManager.justPressed('Digit3')) this.combatManager.triggerPlayerAttack(2);
+      if (this.inputManager.justPressed('Digit4')) this.combatManager.throwCapturePod();
+    }
+
+    // Active Companion Follower update
+    if (this.player.hasStarter && this.player.party && this.player.party.length > 0) {
+      const activeIdx = this.player.activeFollowerIndex || 0;
+      const activeMonster = this.player.party[activeIdx] || this.player.party[0];
+      if (activeMonster) {
+        const species = MONSTER_SPECIES.find(s => s.id === activeMonster.speciesId);
+        if (species) {
+          this.followerMonster.update(
+            dt,
+            this.player.x,
+            this.player.y,
+            this.player.direction,
+            this.player.moving,
+            this.lastBiomeName,
+            species.types[0],
+            species.name,
+            this.particleSystem
+          );
+        }
+      }
+    }
     
     // Keybind shortcut: E key opens Main Menu
     if (this.inputManager.justPressed('KeyE') && !this.isDialogueActive && !this.menuManager.isOpen()) {
@@ -436,6 +506,20 @@ export class OverworldScene implements Scene {
           this.menuManager.openMenu(new PartyMenu(this.player));
         } else if (option === 'Player Card') {
           this.menuManager.openMenu(new PlayerCardMenu(this.player, this.clockManager, () => this.playTimeMs));
+        } else if (option === 'Save') {
+          if (this.player.profile) {
+            localStorage.setItem('poketer_player_profile', JSON.stringify(this.player.profile));
+          }
+          this.controlsHUD.showToast('Game saved successfully!', '💾', 3.0);
+          if (this.audioManager) this.audioManager.playSFX('select');
+        } else if (option === 'Exit') {
+          if (this.player.profile) {
+            localStorage.setItem('poketer_player_profile', JSON.stringify(this.player.profile));
+          }
+          const game = (window as any).__game;
+          if (game && game.sceneManager) {
+            game.sceneManager.replace(new TitleScreenScene(this.renderer, this.inputManager, this.networkClient, this.audioManager));
+          }
         }
       }));
     }
@@ -488,17 +572,21 @@ export class OverworldScene implements Scene {
     // Dialogue State Machine
     if (this.isDialogueActive) {
       if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
-        this.currentDialogueIndex++;
-        if (this.currentDialogueIndex >= this.activeDialogueLines.length) {
-          this.isDialogueActive = false;
-          if (this.activeNPC && (this.activeNPC.sprite === 'stylist' || this.activeNPC.name.includes('Stylist'))) {
-            this.menuManager.openMenu(new OutfitMenu(this.player, (updatedProfile) => {
-              if (this.networkClient) {
-                this.networkClient.setProfile(updatedProfile.name);
-              }
-            }));
+        if (!this.uiManager.isDialogueComplete()) {
+          this.uiManager.finishDialogueLine();
+        } else {
+          this.currentDialogueIndex++;
+          if (this.currentDialogueIndex >= this.activeDialogueLines.length) {
+            this.isDialogueActive = false;
+            if (this.activeNPC && (this.activeNPC.sprite === 'stylist' || this.activeNPC.name.includes('Stylist'))) {
+              this.menuManager.openMenu(new OutfitMenu(this.player, (updatedProfile) => {
+                if (this.networkClient) {
+                  this.networkClient.setProfile(updatedProfile.name);
+                }
+              }));
+            }
+            this.activeNPC = null;
           }
-          this.activeNPC = null;
         }
       }
     } else {
@@ -511,6 +599,11 @@ export class OverworldScene implements Scene {
       if (!this.menuManager.isOpen() && (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter'))) {
         const npc = this.getNPCInFront();
         if (npc) {
+          if (npc.sprite === 'clerk' || npc.name.includes('Mart Clerk')) {
+            this.menuManager.openMenu(new PokemartMenu(this.player));
+            return;
+          }
+
           this.isDialogueActive = true;
           this.activeNPC = npc;
           this.activeDialogueLines = npc.dialogues[0];
@@ -532,8 +625,31 @@ export class OverworldScene implements Scene {
           else if (this.player.direction === 'left') checkGx--;
           else if (this.player.direction === 'right') checkGx++;
 
-          const furniture = this.interiorManager.getInteractableFurniture(checkGx, checkGy);
+          let furniture = this.interiorManager.getInteractableFurniture(checkGx, checkGy);
+          if (!furniture && this.player.direction === 'up') {
+            furniture = this.interiorManager.getInteractableFurniture(checkGx, checkGy - 1);
+          }
+
           if (furniture && furniture.interactionText) {
+            if (furniture.type === 'starter_pod') {
+              if (this.player.hasStarter) {
+                this.controlsHUD.showToast('You already chose your starter companion! Take good care of them!', '🐾', 3.0);
+              } else {
+                let speciesId = 1; // Flamepup
+                if (furniture.id.includes('sproutling')) speciesId = 4;
+                if (furniture.id.includes('aquafin')) speciesId = 7;
+
+                this.menuManager.openMenu(new StarterSelectModal(this.player, speciesId, (starter) => {
+                  this.player.party = [starter];
+                  this.player.hasStarter = true;
+                  this.player.activeFollowerIndex = 0;
+                  this.controlsHUD.showToast(`${starter.nickname} joined your party as your active companion!`, '✨', 4.0);
+                  if (this.audioManager) this.audioManager.playSFX('open');
+                }));
+              }
+              return;
+            }
+
             this.isDialogueActive = true;
             this.activeNPC = null;
             const textLines = Array.isArray(furniture.interactionText) ? furniture.interactionText : [furniture.interactionText];
@@ -661,6 +777,33 @@ export class OverworldScene implements Scene {
         draw: () => this.player.render(ctx, offsetX, offsetY),
       });
 
+      // Render Active Companion Follower in Interior
+      if (this.player.hasStarter && this.player.party && this.player.party.length > 0) {
+        const activeIdx = this.player.activeFollowerIndex || 0;
+        const activeMonster = this.player.party[activeIdx] || this.player.party[0];
+        if (activeMonster) {
+          const species = MONSTER_SPECIES.find(s => s.id === activeMonster.speciesId);
+          if (species) {
+            drawables.push({
+              sortY: this.followerMonster.y + 16,
+              draw: () => {
+                this.followerMonster.render(
+                  ctx,
+                  offsetX,
+                  offsetY,
+                  activeMonster.speciesId,
+                  activeMonster.nickname || species.name,
+                  activeMonster.level,
+                  activeMonster.currentHp,
+                  activeMonster.maxHp,
+                  this.totalAnimTime
+                );
+              },
+            });
+          }
+        }
+      }
+
       drawables.sort((a, b) => a.sortY - b.sortY);
       for (const d of drawables) d.draw();
 
@@ -709,10 +852,40 @@ export class OverworldScene implements Scene {
         draw: () => this.player.render(ctx, offsetX, offsetY),
       });
 
+      // Render Active Companion Follower in Overworld
+      if (this.player.hasStarter && this.player.party && this.player.party.length > 0) {
+        const activeIdx = this.player.activeFollowerIndex || 0;
+        const activeMonster = this.player.party[activeIdx] || this.player.party[0];
+        if (activeMonster) {
+          const species = MONSTER_SPECIES.find(s => s.id === activeMonster.speciesId);
+          if (species) {
+            drawables.push({
+              sortY: this.followerMonster.y + 16,
+              draw: () => {
+                this.followerMonster.render(
+                  ctx,
+                  offsetX,
+                  offsetY,
+                  activeMonster.speciesId,
+                  activeMonster.nickname || species.name,
+                  activeMonster.level,
+                  activeMonster.currentHp,
+                  activeMonster.maxHp,
+                  this.totalAnimTime
+                );
+              },
+            });
+          }
+        }
+      }
+
       drawables.sort((a, b) => a.sortY - b.sortY);
       for (const d of drawables) d.draw();
 
       this.particleSystem.render(ctx, offsetX, offsetY);
+
+      // Render Overworld Combat System
+      this.combatManager.render(ctx, offsetX, offsetY, this.totalAnimTime);
     }
 
     // Dialogue Overlay UI

@@ -241,10 +241,23 @@ export class BackpackMenu extends Menu {
       } else {
         const currentItem = items[this.selectedItem];
         if (currentItem) {
-          ctx.fillText(currentItem.desc, margin + 10, descY + 12);
-          if (currentItem.useEffect) {
+          const maxW = w - 28;
+          const words = currentItem.desc.split(' ');
+          let line1 = '';
+          let line2 = '';
+          for (const word of words) {
+            if (ctx.measureText(line1 ? `${line1} ${word}` : word).width < maxW) {
+              line1 = line1 ? `${line1} ${word}` : word;
+            } else {
+              line2 = line2 ? `${line2} ${word}` : word;
+            }
+          }
+          ctx.fillText(line1, margin + 10, descY + 10);
+          if (line2) {
+            ctx.fillText(line2, margin + 10, descY + 18);
+          } else if (currentItem.useEffect) {
             ctx.fillStyle = '#ffcc00';
-            ctx.fillText('[ENTER] Use Item', margin + 10, descY + 22);
+            ctx.fillText('[ENTER] Use Item', margin + 10, descY + 20);
           }
         }
       }

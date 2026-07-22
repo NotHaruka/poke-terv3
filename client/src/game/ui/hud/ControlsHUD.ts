@@ -45,7 +45,10 @@ export class ControlsHUD {
 
     // 1. Toast Notification Rendering (Center Bottom above controls)
     if (this.activeToast) {
-      const toastW = 120;
+      ctx.font = '8px monospace';
+      const toastText = `${this.activeToast.icon} ${this.activeToast.text}`;
+      const textWidth = ctx.measureText(toastText).width;
+      const toastW = Math.min(GAME_WIDTH - 16, textWidth + 16);
       const toastH = 18;
       const toastX = (GAME_WIDTH - toastW) / 2;
       const toastY = GAME_HEIGHT - 38;
@@ -57,10 +60,9 @@ export class ControlsHUD {
       ctx.strokeRect(toastX, toastY, toastW, toastH);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = '8px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${this.activeToast.icon} ${this.activeToast.text}`, GAME_WIDTH / 2, toastY + toastH / 2);
+      ctx.fillText(toastText, GAME_WIDTH / 2, toastY + toastH / 2);
     }
 
     // 2. Render small "KEYS" chip if there's any portion of it visible

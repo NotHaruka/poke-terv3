@@ -141,8 +141,11 @@ export class InteriorRegistry {
         [0,0,0,0,0,0,0,0,0,0,0,0,0],
       ],
       furniture: [
-        { id: 'prof_desk', name: 'Professor\'s Main Desk', type: 'table', tileX: 5, tileY: 2, widthTiles: 3, heightTiles: 1, solid: true },
-        { id: 'starter_display', name: 'Starter Poké Ball Machine', type: 'decor', tileX: 6, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Three mysterious Poké Balls rest in glass capsules!' },
+        { id: 'prof_desk', name: 'Professor\'s Main Desk', type: 'table', tileX: 1, tileY: 2, widthTiles: 3, heightTiles: 1, solid: true },
+        { id: 'starter_pod_table', name: 'Starter Pod Podia', type: 'table', tileX: 5, tileY: 3, widthTiles: 3, heightTiles: 1, solid: false },
+        { id: 'pod_flamepup', name: 'Flamepup Capture Pod', type: 'starter_pod', tileX: 5, tileY: 3, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Flamepup Pod: The Fire Starter Pokémon! Eager and full of energy!' },
+        { id: 'pod_sproutling', name: 'Sproutling Capture Pod', type: 'starter_pod', tileX: 6, tileY: 3, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Sproutling Pod: The Grass Starter Pokémon! Calm and in harmony with nature!' },
+        { id: 'pod_aquafin', name: 'Aquafin Capture Pod', type: 'starter_pod', tileX: 7, tileY: 3, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Aquafin Pod: The Water Starter Pokémon! Nimble and loves cool streams!' },
         { id: 'bookshelf_left', name: 'Research Bookshelf', type: 'bookshelf', tileX: 1, tileY: 1, widthTiles: 2, heightTiles: 1, solid: true, interactable: true, interactionText: 'Tomes on monster genetics, biomes, and evolution.' },
         { id: 'bookshelf_right', name: 'Research Bookshelf', type: 'bookshelf', tileX: 10, tileY: 1, widthTiles: 2, heightTiles: 1, solid: true, interactable: true, interactionText: 'Encyclopedias detailing regional Pokémon habitats.' },
         { id: 'lab_pc_1', name: 'Supercomputer Array', type: 'pc', tileX: 1, tileY: 4, widthTiles: 1, heightTiles: 2, solid: true, interactable: true, interactionText: 'Analyzing wild encounter frequencies across biomes.' },
@@ -153,7 +156,7 @@ export class InteriorRegistry {
           id: 105,
           name: 'Professor Elm',
           sprite: 'professor',
-          position: { x: 6 * 16, y: 3 * 16 },
+          position: { x: 2 * 16, y: 3 * 16 },
           direction: 'down',
           dialogues: [[
             { speaker: 'Professor Elm', text: 'Ah, young Trainer! Welcome to my Laboratory.' },

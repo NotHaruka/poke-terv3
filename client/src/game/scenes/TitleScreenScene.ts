@@ -13,7 +13,7 @@ export class TitleScreenScene implements Scene {
   private networkClient: NetworkClient | null;
   private audioManager: AudioManager;
 
-  private menuOptions = ['Enter Game', 'Settings', 'Exit'];
+  private menuOptions: string[] = [];
   private selectedIndex = 0;
   private time = 0;
   private alpha = 0; // For fade in
@@ -28,10 +28,24 @@ export class TitleScreenScene implements Scene {
     this.inputManager = inputManager;
     this.networkClient = networkClient;
     this.audioManager = audioManager;
+    this.refreshMenuOptions();
   }
 
   init(): void {
-    // Play title theme if needed
+    this.refreshMenuOptions();
+    if (this.audioManager) {
+      this.audioManager.playMusic('/sunlit_safari.mp3');
+    }
+  }
+
+  private refreshMenuOptions(): void {
+    const savedProfileStr = localStorage.getItem('poketer_player_profile');
+    if (savedProfileStr) {
+      this.menuOptions = ['Continue Game', 'Reset Character', 'Settings'];
+    } else {
+      this.menuOptions = ['New Game', 'Settings'];
+    }
+    this.selectedIndex = 0;
   }
 
   update(dt: number): void {
@@ -43,11 +57,12 @@ export class TitleScreenScene implements Scene {
 
     if (this.inputManager.justPressed('ArrowUp') || this.inputManager.justPressed('KeyW')) {
       this.selectedIndex = (this.selectedIndex - 1 + this.menuOptions.length) % this.menuOptions.length;
-      // this.audioManager.playSound('menu_move'); // Future
+      if (this.audioManager) this.audioManager.playSFX('select');
     }
 
     if (this.inputManager.justPressed('ArrowDown') || this.inputManager.justPressed('KeyS')) {
       this.selectedIndex = (this.selectedIndex + 1) % this.menuOptions.length;
+      if (this.audioManager) this.audioManager.playSFX('select');
     }
 
     if (this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space')) {
@@ -56,13 +71,27 @@ export class TitleScreenScene implements Scene {
   }
 
   private selectOption(): void {
-    if (this.selectedIndex === 0) {
-      // Enter Game
+    const selected = this.menuOptions[this.selectedIndex];
+
+    if (selected === 'Continue Game') {
       this.enterGame();
-    } else if (this.selectedIndex === 1) {
-      // Settings (Future)
-    } else if (this.selectedIndex === 2) {
-      // Exit (Future)
+    } else if (selected === 'New Game') {
+      const game = (window as any).__game;
+      const sceneManager = game.sceneManager;
+      const charCreation = new CharacterCreationScene(this.renderer, this.inputManager, this.networkClient, this.audioManager);
+      sceneManager.replace(charCreation);
+    } else if (selected === 'Reset Character') {
+      // Wipe character data & restart character creation
+      localStorage.removeItem('poketer_player_profile');
+      if (this.audioManager) this.audioManager.playSFX('cancel');
+
+      const game = (window as any).__game;
+      const sceneManager = game.sceneManager;
+      const charCreation = new CharacterCreationScene(this.renderer, this.inputManager, this.networkClient, this.audioManager);
+      sceneManager.replace(charCreation);
+    } else if (selected === 'Settings') {
+      // Settings toast or toggle
+      if (this.audioManager) this.audioManager.playSFX('select');
     }
   }
 

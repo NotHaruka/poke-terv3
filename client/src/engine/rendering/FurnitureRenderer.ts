@@ -221,6 +221,32 @@ export class FurnitureRenderer {
         break;
       }
 
+      case 'starter_pod': {
+        // Starter Pokéball Pod Display
+        ctx.fillStyle = '#34495e';
+        ctx.fillRect(screenX + 2, screenY + 8, 12, 8); // Pedestal base
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fillRect(screenX + 3, screenY + 2, 10, 7); // Glass dome
+
+        const podColor = item.id.includes('flamepup') ? '#ff3333' : item.id.includes('sproutling') ? '#33cc66' : '#3399ff';
+        // Pokéball upper half
+        ctx.fillStyle = podColor;
+        ctx.beginPath();
+        ctx.arc(screenX + 8, screenY + 5, 4, Math.PI, 0, false);
+        ctx.fill();
+        // Pokéball lower half
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(screenX + 8, screenY + 5, 4, 0, Math.PI, false);
+        ctx.fill();
+        // Center button glow
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath();
+        ctx.arc(screenX + 8, screenY + 5, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+
       default: {
         ctx.fillStyle = item.color || '#95a5a6';
         ctx.fillRect(screenX, screenY, w, h);
