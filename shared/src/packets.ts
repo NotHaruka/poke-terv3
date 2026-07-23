@@ -1,6 +1,6 @@
 /** Strongly typed network packet definitions */
 
-import { PlayerProfile, PlayerData } from './types.js';
+import { PlayerProfile, PlayerData, BattleEnvironmentData } from './types.js';
 
 export enum PacketType {
   // Connection
@@ -169,6 +169,7 @@ export interface BattleStartPacket extends Packet {
   opponentId?: string;
   opponentMonsters: MonsterSnapshot[];
   playerMonsters: MonsterSnapshot[];
+  env?: BattleEnvironmentData;
 }
 
 export interface MonsterSnapshot {

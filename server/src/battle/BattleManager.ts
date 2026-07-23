@@ -167,6 +167,8 @@ export class BattleManager {
     const instance = new BattleInstance(battleId, this.server, p1, p2);
     this.battles.set(battleId, instance);
 
+    const env = this.server.getBattleEnvironmentData(p1.mapInstanceId, p1.position.x, p1.position.y);
+
     // Send BattleStart to p1
     this.server.send(p1, {
       type: PacketType.BattleStart,
@@ -175,7 +177,8 @@ export class BattleManager {
       opponentName: p2.username,
       opponentId: p2.id,
       playerMonsters: p1.playerData!.party.map(m => instance.toSnapshot(m)),
-      opponentMonsters: p2.playerData!.party.map(m => instance.toSnapshot(m))
+      opponentMonsters: p2.playerData!.party.map(m => instance.toSnapshot(m)),
+      env
     } as BattleStartPacket);
 
     // Send BattleStart to p2
@@ -186,7 +189,8 @@ export class BattleManager {
       opponentName: p1.username,
       opponentId: p1.id,
       playerMonsters: p2.playerData!.party.map(m => instance.toSnapshot(m)),
-      opponentMonsters: p1.playerData!.party.map(m => instance.toSnapshot(m))
+      opponentMonsters: p1.playerData!.party.map(m => instance.toSnapshot(m)),
+      env
     } as BattleStartPacket);
   }
 

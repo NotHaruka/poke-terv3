@@ -167,6 +167,20 @@ export interface MoveData {
   description: string;
 }
 
+export interface BattleEnvironmentData {
+  mapId: string;
+  x: number;
+  y: number;
+  seed: number;
+  biomeId?: string;
+  biomeName?: string;
+  weather?: 'clear' | 'rain' | 'storm' | 'snow' | 'fog' | 'cloudy';
+  timeOfDay?: 'morning' | 'day' | 'evening' | 'night';
+  isInterior?: boolean;
+  groundTile?: number;
+  nearbyObjects?: string[];
+}
+
 export enum PlayerState {
   Walking = 0,
   Running = 1,

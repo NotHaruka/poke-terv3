@@ -33,6 +33,8 @@ import {
   PlayerLeavePacket,
   PlayerMovePacket,
   getBiomeAt,
+  rawTerrainTile,
+  BattleEnvironmentData,
   getNPCsForMap,
   findSafeSpawn,
   NPCDefinition
@@ -238,6 +240,10 @@ export class OverworldScene implements Scene {
         this.battleRequestManager.clearOutgoingRequest();
         this.battleRequestManager.clearIncomingRequest();
         this.player.state = PlayerState.Battling; // Freeze player during battle transition
+
+        if (!p.env) {
+          p.env = this.captureEnvironmentData();
+        }
 
         this.battleTransitionManager.startTransition('pvp', 600, () => {
           const game = (window as any).__game;
@@ -1555,6 +1561,63 @@ private getNPCInFront(): NPCDefinition | null {
 
       ctx.restore();
     }
+  }
+
+  public captureEnvironmentData(): BattleEnvironmentData {
+    const gx = Math.floor(this.player.x / 16);
+    const gy = Math.floor(this.player.y / 16);
+    const seed = this.chunkManager.currentSeed;
+    const isInterior = this.doorSystem.isInInterior || this.currentMapId.includes('interior');
+
+    let biomeId = 'plains';
+    let biomeName = 'Grassland Plains';
+    let groundTile = 1;
+
+    if (isInterior) {
+      biomeId = 'interior';
+      biomeName = this.currentMapId.includes('lab') ? 'Research Lab' :
+                  this.currentMapId.includes('pokecenter') ? 'Pokémon Center' :
+                  this.currentMapId.includes('mart') ? 'Poké Mart' : 'Building Interior';
+      groundTile = 6;
+    } else {
+      const biome = getBiomeAt(gx, gy, seed, this.currentMapId);
+      biomeId = biome.id;
+      biomeName = biome.name;
+      groundTile = rawTerrainTile(gx, gy, seed, this.currentMapId);
+    }
+
+    const weather = (envSystem as any).weather || 'clear';
+    const timeOfDay = this.clockManager.getTimeOfDay();
+
+    const nearbyObjects: string[] = [];
+    if (!isInterior) {
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dy = -3; dy <= 3; dy++) {
+          const t = rawTerrainTile(gx + dx, gy + dy, seed, this.currentMapId);
+          if (t === 5) nearbyObjects.push('tree');
+          else if (t === 9) nearbyObjects.push('tall_grass');
+          else if (t === 3) nearbyObjects.push('water');
+          else if (t === 4) nearbyObjects.push('cliff');
+          else if (t === 2) nearbyObjects.push('path');
+        }
+      }
+    } else {
+      nearbyObjects.push('furniture', 'carpet', 'wall');
+    }
+
+    return {
+      mapId: this.currentMapId,
+      x: this.player.x,
+      y: this.player.y,
+      seed,
+      biomeId,
+      biomeName,
+      weather: weather as any,
+      timeOfDay,
+      isInterior,
+      groundTile,
+      nearbyObjects: Array.from(new Set(nearbyObjects))
+    };
   }
 
   destroy(): void {

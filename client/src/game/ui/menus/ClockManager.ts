@@ -34,4 +34,12 @@ export class ClockManager {
     const minStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
     return `${hours}:${minStr}${ampm}`;
   }
+
+  getTimeOfDay(): 'morning' | 'day' | 'evening' | 'night' {
+    const hours = Math.floor(this.inGameMinutes / 60);
+    if (hours >= 5 && hours < 10) return 'morning';
+    if (hours >= 10 && hours < 17) return 'day';
+    if (hours >= 17 && hours < 20) return 'evening';
+    return 'night';
+  }
 }

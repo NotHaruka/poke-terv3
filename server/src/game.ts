@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import { ClientState, MapInstance } from './types.js';
-import { AnyPacket, findSafeSpawn, WORLD_SEED } from 'poke-ter-shared';
+import { AnyPacket, findSafeSpawn, WORLD_SEED, getBiomeAt, rawTerrainTile, BattleEnvironmentData } from 'poke-ter-shared';
 import { BattleManager } from './battle/BattleManager.js';
 
 export function getRouteSeed(mapId: string, worldSeed: number = WORLD_SEED): number {
@@ -68,6 +68,70 @@ export class GameState {
 
   public getMap(id: string): MapInstance | undefined {
     return this.maps.get(id);
+  }
+
+  public getBattleEnvironmentData(mapId: string, x: number, y: number): BattleEnvironmentData {
+    const gx = Math.floor(x / 16);
+    const gy = Math.floor(y / 16);
+    const map = this.getMap(mapId);
+    const seed = map ? map.seed : getRouteSeed(mapId);
+    const isInterior = mapId.includes('interior');
+
+    const biome = getBiomeAt(gx, gy, seed, mapId);
+    const groundTile = rawTerrainTile(gx, gy, seed, mapId);
+
+    const uptimeMs = Date.now() - this.serverStartTime;
+    const uptimeMinutes = (uptimeMs / 1000 * 60) / 60;
+    const inGameMinutes = (8 * 60 + uptimeMinutes) % (24 * 60);
+    const hours = Math.floor(inGameMinutes / 60);
+
+    let timeOfDay: 'morning' | 'day' | 'evening' | 'night' = 'day';
+    if (hours >= 5 && hours < 10) timeOfDay = 'morning';
+    else if (hours >= 10 && hours < 17) timeOfDay = 'day';
+    else if (hours >= 17 && hours < 20) timeOfDay = 'evening';
+    else timeOfDay = 'night';
+
+    let weather: 'clear' | 'rain' | 'storm' | 'snow' | 'fog' | 'cloudy' = 'clear';
+    if (biome.id === 'ice_peak' || biome.id === 'tundra') {
+      weather = 'snow';
+    } else if (biome.id === 'lake' || mapId.includes('route_3')) {
+      const wHash = Math.sin(seed * 17 + hours) * 0.5 + 0.5;
+      if (wHash > 0.7) weather = 'rain';
+      else if (wHash > 0.5) weather = 'fog';
+      else if (wHash > 0.3) weather = 'cloudy';
+    } else if (biome.id === 'forest') {
+      const wHash = Math.sin(seed * 31 + hours) * 0.5 + 0.5;
+      if (wHash > 0.8) weather = 'storm';
+      else if (wHash > 0.6) weather = 'rain';
+      else if (wHash > 0.4) weather = 'cloudy';
+    }
+
+    const nearbyObjects: string[] = [];
+    for (let dx = -3; dx <= 3; dx++) {
+      for (let dy = -3; dy <= 3; dy++) {
+        const nx = gx + dx;
+        const ny = gy + dy;
+        const t = rawTerrainTile(nx, ny, seed, mapId);
+        if (t === 5) nearbyObjects.push('tree');
+        else if (t === 9) nearbyObjects.push('tall_grass');
+        else if (t === 3) nearbyObjects.push('water');
+        else if (t === 4) nearbyObjects.push('cliff');
+      }
+    }
+
+    return {
+      mapId,
+      x,
+      y,
+      seed,
+      biomeId: biome.id,
+      biomeName: biome.name,
+      weather,
+      timeOfDay,
+      isInterior,
+      groundTile,
+      nearbyObjects: Array.from(new Set(nearbyObjects))
+    };
   }
 
   public createRouteMap(id: string): MapInstance {

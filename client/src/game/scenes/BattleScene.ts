@@ -269,7 +269,7 @@ export class BattleScene implements Scene {
     ctx.save();
 
     // Render 1. Background terrain
-    this.battleRenderer.renderBackground(ctx, w, h, 'grass');
+    this.battleRenderer.renderBackground(ctx, w, h, this.startPacket.env || 'grass');
 
     // Render 2. Trainers & Monsters
     const state = this.stateMachine.getState();
