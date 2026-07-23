@@ -222,7 +222,7 @@ export class OverworldCombatManager {
 
     this.playerAttackCooldown = 1.2;
 
-    const moveNames = ['Tackle', 'Ember / Element Jet', 'Quick Strike'];
+    const moveNames = ['Headbutt', 'Flame Spark / Elemental Jet', 'Swift Dash'];
     const moveColors = ['#ffcc00', '#ff4500', '#4deeea'];
     const damage = Math.floor(Math.random() * 12) + 12 + Math.floor(activeMonster.stats.attack / 4);
 

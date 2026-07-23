@@ -1,5 +1,5 @@
 /**
- * Pokémart Shop Menu UI
+ * Supply Mart Shop Menu UI
  * Active shopkeeper cashier interface for purchasing Capture Pods, Potions, and supplies.
  */
 
@@ -16,15 +16,15 @@ export interface ShopItem {
 }
 
 export const MART_ITEMS: ShopItem[] = [
-  { id: 1, name: 'Capture Pod', price: 200, description: 'Standard device used to capture wild monsters.', category: 'Pokéball' },
-  { id: 2, name: 'Great Pod', price: 600, description: 'High-performance Capture Pod with higher catch rate.', category: 'Pokéball' },
+  { id: 1, name: 'Capture Pod', price: 200, description: 'Standard device used to capture wild monsters.', category: 'Pod' },
+  { id: 2, name: 'Great Pod', price: 600, description: 'High-performance Capture Pod with higher catch rate.', category: 'Pod' },
   { id: 3, name: 'Potion', price: 300, description: 'Restores 20 HP to a wounded monster.', category: 'Medicine' },
   { id: 4, name: 'Hyper Potion', price: 800, description: 'Restores 50 HP to a wounded monster.', category: 'Medicine' },
   { id: 5, name: 'Antidote', price: 100, description: 'Cures poison and status ailments.', category: 'Medicine' },
   { id: 6, name: 'Repel', price: 350, description: 'Wards off wild monster encounters for 250 steps.', category: 'Supply' },
 ];
 
-export class PokemartMenu extends Menu {
+export class SupplyMartMenu extends Menu {
   private player: Player;
   private selectedIndex: number = 0;
   private buyQuantity: number = 1;
@@ -116,7 +116,7 @@ export class PokemartMenu extends Menu {
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('POKÉMART CASHIER SHOP', x + 16, y + 16);
+    ctx.fillText('SUPPLY MART SHOP', x + 16, y + 16);
 
     // Money display
     ctx.fillStyle = '#f1c40f';

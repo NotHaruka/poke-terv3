@@ -8,10 +8,10 @@ export class InteriorRegistry {
   static init(): void {
     if (this.interiors.size > 0) return;
 
-    // 1. Pokémon Center Interior (Healing Center)
+    // 1. Monster Center Interior (Healing Center)
     this.register({
       interiorId: 'pokecenter_interior',
-      name: 'Pokémon Center Interior',
+      name: 'Monster Center Interior',
       widthTiles: 13,
       heightTiles: 10,
       music: '/morning_in_the_village.mp3',
@@ -32,8 +32,8 @@ export class InteriorRegistry {
       ],
       furniture: [
         { id: 'nurse_counter', name: 'Nurse Reception Counter', type: 'counter', tileX: 4, tileY: 2, widthTiles: 5, heightTiles: 1, solid: true },
-        { id: 'healing_machine', name: 'Pokémon Healing Machine', type: 'healing_machine', tileX: 6, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Healing Machine ready. Rest your team here!' },
-        { id: 'pc_terminal', name: 'Storage PC Terminal', type: 'pc', tileX: 10, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Accessed Pokémon Storage System.' },
+        { id: 'healing_machine', name: 'Monster Healing Machine', type: 'healing_machine', tileX: 6, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Healing Machine ready. Rest your team here!' },
+        { id: 'pc_terminal', name: 'Storage PC Terminal', type: 'pc', tileX: 10, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Accessed Monster Storage System.' },
         { id: 'waiting_couch_1', name: 'Plush Lounge Sofa', type: 'chair', tileX: 2, tileY: 5, widthTiles: 1, heightTiles: 2, solid: true },
         { id: 'waiting_couch_2', name: 'Plush Lounge Sofa', type: 'chair', tileX: 10, tileY: 5, widthTiles: 1, heightTiles: 2, solid: true },
         { id: 'indoor_plant_1', name: 'House Palm', type: 'plant', tileX: 1, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true },
@@ -47,7 +47,7 @@ export class InteriorRegistry {
           position: { x: 6 * 16, y: 1.25 * 16 },
           direction: 'down',
           dialogues: [[
-            { speaker: 'Nurse Joy', text: 'Welcome to the Pokémon Center!' },
+            { speaker: 'Nurse Joy', text: 'Welcome to the Monster Center!' },
             { speaker: 'Nurse Joy', text: 'We restore your tired monsters to full health.' },
             { speaker: 'Nurse Joy', text: 'Your party has been fully healed and rested!' }
           ]]
@@ -65,10 +65,10 @@ export class InteriorRegistry {
       ]
     });
 
-    // 2. Pokémon Mart Interior (Shop)
+    // 2. Supply Mart Interior (Shop)
     this.register({
       interiorId: 'pokemart_interior',
-      name: 'Pokémon Mart Interior',
+      name: 'Supply Mart Interior',
       widthTiles: 11,
       heightTiles: 9,
       music: '/lanterns_at_home.mp3',
@@ -88,7 +88,7 @@ export class InteriorRegistry {
       ],
       furniture: [
         { id: 'clerk_counter', name: 'Mart Cashier Counter', type: 'counter', tileX: 2, tileY: 3, widthTiles: 3, heightTiles: 1, solid: true },
-        { id: 'shop_shelf_1', name: 'Pokéball & Medicine Display', type: 'shop_shelf', tileX: 6, tileY: 2, widthTiles: 3, heightTiles: 1, solid: true, interactable: true, interactionText: 'Shelves stacked with Poké Balls, Potions, and Antidotes!' },
+        { id: 'shop_shelf_1', name: 'Capture Pod & Medicine Display', type: 'shop_shelf', tileX: 6, tileY: 2, widthTiles: 3, heightTiles: 1, solid: true, interactable: true, interactionText: 'Shelves stacked with Capture Pods, Vital Tonics, and Salves!' },
         { id: 'shop_shelf_2', name: 'Berry & Travel Supply Display', type: 'shop_shelf', tileX: 6, tileY: 4, widthTiles: 3, heightTiles: 1, solid: true, interactable: true, interactionText: 'Row of fresh Oran Berries and Escape Ropes.' },
         { id: 'plant_corner', name: 'Store Decor Plant', type: 'plant', tileX: 9, tileY: 1, widthTiles: 1, heightTiles: 1, solid: true },
       ],
@@ -100,8 +100,8 @@ export class InteriorRegistry {
           position: { x: 3 * 16, y: 2.25 * 16 },
           direction: 'down',
           dialogues: [[
-            { speaker: 'Mart Clerk', text: 'Welcome to the Pokémon Mart!' },
-            { speaker: 'Mart Clerk', text: 'We stock Poké Balls, Potions, and essential journey supplies.' }
+            { speaker: 'Mart Clerk', text: 'Welcome to the Supply Mart!' },
+            { speaker: 'Mart Clerk', text: 'We stock Capture Pods, Vital Tonics, and essential journey supplies.' }
           ]]
         },
         {
@@ -111,7 +111,7 @@ export class InteriorRegistry {
           position: { x: 7 * 16, y: 3 * 16 },
           direction: 'up',
           dialogues: [[
-            { speaker: 'Shopper Lisa', text: 'Always stock up on extra Poké Balls before entering tall grass!' }
+            { speaker: 'Shopper Lisa', text: 'Always stock up on extra Capture Pods before entering tall grass!' }
           ]]
         }
       ]
@@ -147,9 +147,9 @@ export class InteriorRegistry {
         { id: 'pod_sproutling', name: 'Sproutling Capture Pod', type: 'starter_pod', tileX: 6, tileY: 3, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Sproutling Pod: The Grass Starter Pokémon! Calm and in harmony with nature!' },
         { id: 'pod_aquafin', name: 'Aquafin Capture Pod', type: 'starter_pod', tileX: 7, tileY: 3, widthTiles: 1, heightTiles: 1, solid: true, interactable: true, interactionText: 'Aquafin Pod: The Water Starter Pokémon! Nimble and loves cool streams!' },
         { id: 'bookshelf_left', name: 'Research Bookshelf', type: 'bookshelf', tileX: 1, tileY: 1, widthTiles: 2, heightTiles: 1, solid: true, interactable: true, interactionText: 'Tomes on monster genetics, biomes, and evolution.' },
-        { id: 'bookshelf_right', name: 'Research Bookshelf', type: 'bookshelf', tileX: 10, tileY: 1, widthTiles: 2, heightTiles: 1, solid: true, interactable: true, interactionText: 'Encyclopedias detailing regional Pokémon habitats.' },
+        { id: 'bookshelf_right', name: 'Research Bookshelf', type: 'bookshelf', tileX: 10, tileY: 1, widthTiles: 2, heightTiles: 1, solid: true, interactable: true, interactionText: 'Encyclopedias detailing regional monster habitats.' },
         { id: 'lab_pc_1', name: 'Supercomputer Array', type: 'pc', tileX: 1, tileY: 4, widthTiles: 1, heightTiles: 2, solid: true, interactable: true, interactionText: 'Analyzing wild encounter frequencies across biomes.' },
-        { id: 'lab_pc_2', name: 'Server Rack', type: 'pc', tileX: 11, tileY: 4, widthTiles: 1, heightTiles: 2, solid: true, interactable: true, interactionText: 'Synchronizing regional Pokédex data logs.' },
+        { id: 'lab_pc_2', name: 'Server Rack', type: 'pc', tileX: 11, tileY: 4, widthTiles: 1, heightTiles: 2, solid: true, interactable: true, interactionText: 'Synchronizing regional Monster Dex data logs.' },
       ],
       npcs: [
         {
@@ -160,8 +160,8 @@ export class InteriorRegistry {
           direction: 'down',
           dialogues: [[
             { speaker: 'Professor Elm', text: 'Ah, young Trainer! Welcome to my Laboratory.' },
-            { speaker: 'Professor Elm', text: 'Our world is filled with remarkable creatures called Pokémon.' },
-            { speaker: 'Professor Elm', text: 'Explore the infinite biomes and log your discoveries in the Pokédex!' }
+            { speaker: 'Professor Elm', text: 'Our world is filled with remarkable creatures called monsters.' },
+            { speaker: 'Professor Elm', text: 'Explore the infinite biomes and log your discoveries in the Monster Dex!' }
           ]]
         },
         {
@@ -254,7 +254,7 @@ export class InteriorRegistry {
           direction: 'down',
           dialogues: [[
             { speaker: 'Mayor Reginald', text: 'Greetings, Trainer! Welcome to Permanent City.' },
-            { speaker: 'Mayor Reginald', text: 'Our town is surrounded by wild routes rich in diverse Pokémon species!' }
+            { speaker: 'Mayor Reginald', text: 'Our town is surrounded by wild routes rich in diverse monster species!' }
           ]]
         }
       ]
@@ -323,7 +323,7 @@ export class InteriorRegistry {
         [0,0,0,0,0,0,0,0,0,0,0,0],
       ],
       furniture: [
-        { id: 'crates_1', name: 'Cargo Wooden Crates', type: 'crate', tileX: 1, tileY: 1, widthTiles: 2, heightTiles: 2, solid: true, interactable: true, interactionText: 'Boxes filled with Poké Ball parts and construction supplies.' },
+        { id: 'crates_1', name: 'Cargo Wooden Crates', type: 'crate', tileX: 1, tileY: 1, widthTiles: 2, heightTiles: 2, solid: true, interactable: true, interactionText: 'Boxes filled with Capture Pod parts and construction supplies.' },
         { id: 'crates_2', name: 'Metal Drums', type: 'barrel', tileX: 8, tileY: 1, widthTiles: 2, heightTiles: 1, solid: true },
         { id: 'storage_rack', name: 'High Storage Racks', type: 'shop_shelf', tileX: 8, tileY: 3, widthTiles: 3, heightTiles: 2, solid: true },
       ],
@@ -374,7 +374,7 @@ export class InteriorRegistry {
           position: { x: 5 * 16, y: 2.25 * 16 },
           direction: 'down',
           dialogues: [[
-            { speaker: 'Ranger Captain Dan', text: 'Maintain ecological harmony! Always treat wild Pokémon with respect.' }
+            { speaker: 'Ranger Captain Dan', text: 'Maintain ecological harmony! Always treat wild monsters with respect.' }
           ]]
         }
       ]
@@ -495,7 +495,7 @@ export class InteriorRegistry {
           position: { x: 5 * 16, y: 3.25 * 16 },
           direction: 'down',
           dialogues: [[
-            { speaker: 'Librarian Sophia', text: 'Shh! Knowledge is the greatest asset of any Pokémon Trainer.' }
+            { speaker: 'Librarian Sophia', text: 'Shh! Knowledge is the greatest asset of any Monster Trainer.' }
           ]]
         }
       ]

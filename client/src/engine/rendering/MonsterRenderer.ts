@@ -196,7 +196,7 @@ export class MonsterRenderer {
 
       case 4: // Sproutling (Grass)
       case 5: // Floramander
-      case 6: // Venusaur
+      case 6: // Verdantsaur
         // Green Grass Monster
         ctx.fillStyle = speciesId === 6 ? '#2d6a4f' : speciesId === 5 ? '#40916c' : '#52b788';
         

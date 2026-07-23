@@ -2,7 +2,7 @@ import { Menu } from './Menu.js';
 import { GAME_WIDTH, GAME_HEIGHT } from 'poke-ter-shared';
 import { Player } from '../../entities/Player.js';
 
-export class PokedexMenu extends Menu {
+export class MonsterDexMenu extends Menu {
   private player: Player;
   private selectedTab: number = 0;
   private tabs: string[] = ['Overview', 'List', 'Stats'];

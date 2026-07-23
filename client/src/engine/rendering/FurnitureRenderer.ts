@@ -1,6 +1,6 @@
 /**
  * Detailed renderer for interior furniture objects and decorations
- * (Pokémon Center Healing Machine, Shop Counters, PCs, Beds, Tables, Bookshelves, Fireplaces)
+ * (Monster Center Healing Machine, Shop Counters, PCs, Beds, Tables, Bookshelves, Fireplaces)
  */
 
 import { FurnitureItem } from '../interiors/InteriorDefinition.js';
@@ -18,18 +18,18 @@ export class FurnitureRenderer {
 
     switch (item.type) {
       case 'healing_machine': {
-        // Pokémon Center Healing Machine
+        // Monster Center Healing Machine
         ctx.fillStyle = '#2c3e50';
         ctx.fillRect(screenX, screenY, w, h);
         ctx.fillStyle = '#ecf0f1';
         ctx.fillRect(screenX + 1, screenY + 1, w - 2, h - 2);
 
-        // 6 Pokéball trays / slots
+        // 6 Capture Pod trays / slots
         for (let i = 0; i < 6; i++) {
           const bx = screenX + 2 + (i % 3) * 4;
           const by = screenY + 2 + Math.floor(i / 3) * 6;
 
-          // Glowing Pokéballs on machine
+          // Glowing Capture Pods on machine
           const glow = Math.sin(animTime * 4 + i) * 0.5 + 0.5;
           ctx.fillStyle = `rgba(231, 76, 60, ${0.7 + glow * 0.3})`;
           ctx.beginPath();
@@ -152,9 +152,9 @@ export class FurnitureRenderer {
         ctx.fillRect(screenX, screenY, w, h);
         ctx.fillStyle = '#ecf0f1';
         ctx.fillRect(screenX + 2, screenY + 2, w - 4, h - 4);
-        ctx.fillStyle = '#e74c3c'; // Item 1 (Pokeball)
+        ctx.fillStyle = '#e74c3c'; // Item 1 (Capture Pod)
         ctx.fillRect(screenX + 4, screenY + 4, 3, 3);
-        ctx.fillStyle = '#3498db'; // Item 2 (Potion)
+        ctx.fillStyle = '#3498db'; // Item 2 (Vital Tonic)
         ctx.fillRect(screenX + 10, screenY + 4, 3, 3);
         break;
       }
@@ -222,19 +222,19 @@ export class FurnitureRenderer {
       }
 
       case 'starter_pod': {
-        // Starter Pokéball Pod Display
+        // Starter Capture Pod Display
         ctx.fillStyle = '#34495e';
         ctx.fillRect(screenX + 2, screenY + 8, 12, 8); // Pedestal base
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fillRect(screenX + 3, screenY + 2, 10, 7); // Glass dome
 
         const podColor = item.id.includes('flamepup') ? '#ff3333' : item.id.includes('sproutling') ? '#33cc66' : '#3399ff';
-        // Pokéball upper half
+        // Capture Pod upper half
         ctx.fillStyle = podColor;
         ctx.beginPath();
         ctx.arc(screenX + 8, screenY + 5, 4, Math.PI, 0, false);
         ctx.fill();
-        // Pokéball lower half
+        // Capture Pod lower half
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(screenX + 8, screenY + 5, 4, 0, Math.PI, false);

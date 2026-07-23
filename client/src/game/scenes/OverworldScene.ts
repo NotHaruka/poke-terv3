@@ -16,7 +16,7 @@ import { MenuManager } from '../ui/menus/MenuManager.js';
 import { ClockManager } from '../ui/menus/ClockManager.js';
 import { MainMenu } from '../ui/menus/MainMenu.js';
 import { BackpackMenu } from '../ui/menus/BackpackMenu.js';
-import { PokedexMenu } from '../ui/menus/PokedexMenu.js';
+import { MonsterDexMenu } from '../ui/menus/MonsterDexMenu.js';
 import { PartyMenu } from '../ui/menus/PartyMenu.js';
 import { PlayerCardMenu } from '../ui/menus/PlayerCardMenu.js';
 import { OutfitMenu } from '../ui/menus/OutfitMenu.js';
@@ -52,7 +52,7 @@ import { DoorSystem } from '../../engine/doors/DoorSystem.js';
 import { FollowerMonster } from '../entities/FollowerMonster.js';
 import { OverworldCombatManager } from '../combat/OverworldCombatManager.js';
 import { StarterSelectModal } from '../ui/menus/StarterSelectModal.js';
-import { PokemartMenu } from '../ui/menus/PokemartMenu.js';
+import { SupplyMartMenu } from '../ui/menus/SupplyMartMenu.js';
 import { MONSTER_SPECIES, calculateStats, getMonsterSpecies } from 'poke-ter-shared';
 import { TitleScreenScene } from './TitleScreenScene.js';
 
@@ -335,7 +335,7 @@ export class OverworldScene implements Scene {
         if (!this.menuManager.isOpen()) {
           this.menuManager.openMenu(new MainMenu((option) => {
             if (option === 'Backpack') this.menuManager.openMenu(new BackpackMenu(this.player));
-            else if (option === 'Data Log') this.menuManager.openMenu(new PokedexMenu(this.player));
+            else if (option === 'Data Log') this.menuManager.openMenu(new MonsterDexMenu(this.player));
             else if (option === 'Monster Party') this.menuManager.openMenu(new PartyMenu(this.player));
             else if (option === 'Player Card') this.menuManager.openMenu(new PlayerCardMenu(this.player, this.clockManager, () => this.playTimeMs));
           }));
@@ -814,7 +814,7 @@ private getNPCInFront(): NPCDefinition | null {
         if (option === 'Backpack') {
           this.menuManager.openMenu(new BackpackMenu(this.player));
         } else if (option === 'Data Log') {
-          this.menuManager.openMenu(new PokedexMenu(this.player));
+          this.menuManager.openMenu(new MonsterDexMenu(this.player));
         } else if (option === 'Monster Party') {
           this.menuManager.openMenu(new PartyMenu(this.player));
         } else if (option === 'Player Card') {
@@ -925,7 +925,7 @@ private getNPCInFront(): NPCDefinition | null {
           const npc = this.getNPCInFront();
           if (npc) {
             if (npc.sprite === 'clerk' || npc.name.includes('Mart Clerk')) {
-              this.menuManager.openMenu(new PokemartMenu(this.player));
+              this.menuManager.openMenu(new SupplyMartMenu(this.player));
               this.inputManager.consume('Space');
               this.inputManager.consume('Enter');
               interacted = true;
@@ -1576,8 +1576,8 @@ private getNPCInFront(): NPCDefinition | null {
     if (isInterior) {
       biomeId = 'interior';
       biomeName = this.currentMapId.includes('lab') ? 'Research Lab' :
-                  this.currentMapId.includes('pokecenter') ? 'Pokémon Center' :
-                  this.currentMapId.includes('mart') ? 'Poké Mart' : 'Building Interior';
+                  this.currentMapId.includes('pokecenter') ? 'Monster Center' :
+                  this.currentMapId.includes('mart') ? 'Supply Mart' : 'Building Interior';
       groundTile = 6;
     } else {
       const biome = getBiomeAt(gx, gy, seed, this.currentMapId);

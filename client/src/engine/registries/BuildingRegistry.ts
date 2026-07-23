@@ -6,7 +6,7 @@ export class BuildingRegistry {
   private static buildings = new Map<string, BuildingDefinition>([
     ['pokecenter', {
       id: 'pokecenter',
-      name: 'Pokémon Healing Center',
+      name: 'Monster Healing Center',
       type: 'healing_center',
       widthTiles: 5,
       heightTiles: 4,
@@ -17,7 +17,7 @@ export class BuildingRegistry {
       trimColor: '#e74c3c',
       roofStyle: 'sloped',
       signSymbol: 'P',
-      signText: 'POKÉMON CENTER',
+      signText: 'MONSTER CENTER',
       interiorMapId: 'pokecenter_interior',
       interiorSpawnTile: { x: 7, y: 8 },
       interiorSpawnDirection: 'up',
@@ -25,7 +25,7 @@ export class BuildingRegistry {
     }],
     ['pokemart', {
       id: 'pokemart',
-      name: 'Pokémon Mart & Shop',
+      name: 'Supply Mart & Shop',
       type: 'shop',
       widthTiles: 4,
       heightTiles: 4,
@@ -44,7 +44,7 @@ export class BuildingRegistry {
     }],
     ['lab', {
       id: 'lab',
-      name: 'Pokémon Research Lab',
+      name: 'Research Lab',
       type: 'lab',
       widthTiles: 6,
       heightTiles: 4,

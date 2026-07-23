@@ -146,8 +146,8 @@ export class BattleScene implements Scene {
       if (keyInput) {
         if (this.msgBox.isComplete()) {
           this.stateMachine.setState(BattleState.INTRO_SEND_OUT);
-          this.battleRenderer.throwPokeball('opponent');
-          this.battleRenderer.throwPokeball('player');
+          this.battleRenderer.throwCapturePod('opponent');
+          this.battleRenderer.throwCapturePod('player');
           this.msgBox.setText(`Go! ${(this.p1Active.nickname || getMonsterSpecies(this.p1Active.speciesId)?.name || 'Monster')}!`, 22);
         } else {
           this.msgBox.completeInstantly();
@@ -217,7 +217,7 @@ export class BattleScene implements Scene {
           if (res.slot === this.p1ActiveIndex) {
             this.msgBox.setText("Monster is already in battle!", 22);
           } else if (this.p1Monsters[res.slot] && this.p1Monsters[res.slot].currentHp <= 0) {
-            this.msgBox.setText("That monster has fainted!", 22);
+            this.msgBox.setText("That monster is defeated and cannot fight!", 22);
           } else {
             this.showPartyModal = false;
             this.networkClient.send({

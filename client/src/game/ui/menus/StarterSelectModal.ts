@@ -45,10 +45,10 @@ export class StarterSelectModal extends Menu {
     const evs = { hp: 0, attack: 0, defense: 0, spAttack: 0, spDefense: 0, speed: 0 };
     const stats = calculateStats(species.baseStats, ivs, evs, level);
 
-    let move1 = 1; // Tackle
-    let move2 = 2; // Ember (Fire) / Vine Whip (Grass) / Water Gun (Water)
-    if (species.types[0] === MonsterType.Grass) move2 = 3;
-    if (species.types[0] === MonsterType.Water) move2 = 4;
+    let move1 = 1; // Headbutt (Normal)
+    let move2 = 2; // Flame Spark (Fire) / Vine Lash (Grass) / Water Pulse (Water)
+    if (species.types[0] === MonsterType.Grass) move2 = 4;
+    if (species.types[0] === MonsterType.Water) move2 = 6;
 
     return {
       speciesId: species.id,

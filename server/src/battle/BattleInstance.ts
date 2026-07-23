@@ -234,7 +234,7 @@ export class BattleInstance {
         }
 
         if (enemyExec.m.currentHp === 0) {
-          events.push({ type: 'message', text: `${defenderName} fainted!` });
+          events.push({ type: 'message', text: `${defenderName} was defeated!` });
           events.push({ type: 'faint', target: exec.p === 1 ? 'opponent' : 'player' });
         }
       }

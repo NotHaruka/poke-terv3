@@ -257,12 +257,12 @@ export class BattleAnimationManager {
         Object.assign(ctx.opponentMon, ev.monster);
         this.renderer.opponentMonFaintOffsetY = 0;
         this.renderer.opponentMonOpacity = 1;
-        this.renderer.throwPokeball('opponent');
+        this.renderer.throwCapturePod('opponent');
       } else {
         Object.assign(ctx.playerMon, ev.monster);
         this.renderer.playerMonFaintOffsetY = 0;
         this.renderer.playerMonOpacity = 1;
-        this.renderer.throwPokeball('player');
+        this.renderer.throwCapturePod('player');
       }
 
       let elapsed = 0;

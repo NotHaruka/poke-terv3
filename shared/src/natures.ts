@@ -6,8 +6,7 @@ interface NatureEffect {
 }
 
 // Indexed directly by the Nature enum value — order matches the existing
-// enum in types.ts exactly, which already follows the standard Pokemon
-// nature ordering (Hardy=0 ... Quirky=24).
+// enum in types.ts exactly (Hardy=0 ... Quirky=24).
 const NATURE_EFFECTS: NatureEffect[] = [
   { increased: null, decreased: null },              // 0  Hardy
   { increased: Stat.Attack, decreased: Stat.Defense },     // 1  Lonely

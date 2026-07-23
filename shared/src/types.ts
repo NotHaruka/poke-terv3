@@ -239,7 +239,7 @@ export interface ItemData {
 
 export enum ItemCategory {
   Medicine = 0,
-  PokeBall = 1,
+  CaptureDevice = 1,
   Berry = 2,
   Held = 3,
   Key = 4,

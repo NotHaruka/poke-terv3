@@ -16,14 +16,14 @@ export class UIManager {
     enemyName: string, enemyHp: number, enemyMaxHp: number, enemyLevel: number,
   ): void {
     // Enemy HUD (top right)
-    this.drawPokemonHUD(ctx, enemyName, enemyHp, enemyMaxHp, enemyLevel, GAME_WIDTH - 8, 8, 'right');
+    this.drawMonsterHUD(ctx, enemyName, enemyHp, enemyMaxHp, enemyLevel, GAME_WIDTH - 8, 8, 'right');
 
     // Player HUD (bottom left)
-    this.drawPokemonHUD(ctx, playerName, playerHp, playerMaxHp, playerLevel, 8, GAME_HEIGHT - 72, 'left');
+    this.drawMonsterHUD(ctx, playerName, playerHp, playerMaxHp, playerLevel, 8, GAME_HEIGHT - 72, 'left');
   }
 
-  /** Draw a single Pokemon HUD */
-  private drawPokemonHUD(
+  /** Draw a single Monster HUD */
+  private drawMonsterHUD(
     ctx: CanvasRenderingContext2D,
     name: string, hp: number, maxHp: number, level: number,
     x: number, y: number, align: 'left' | 'right',

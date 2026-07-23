@@ -96,7 +96,7 @@ export class BattleRenderer {
     }
   }
 
-  public throwPokeball(targetSide: 'player' | 'opponent'): void {
+  public throwCapturePod(targetSide: 'player' | 'opponent'): void {
     if (targetSide === 'opponent') {
       this.activeBallArc = {
         targetSide,
