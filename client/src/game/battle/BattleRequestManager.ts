@@ -195,12 +195,20 @@ export class BattleRequestManager {
     if (this.onAcceptCallback) this.onAcceptCallback(req);
   }
 
+  public acceptIncomingRequest(): void {
+    this.acceptIncoming();
+  }
+
   public declineIncoming(): void {
     if (!this.incomingRequest) return;
     const req = { ...this.incomingRequest };
     if (this.audioManager) this.audioManager.playSound('cancel');
     this.isClosing = true;
     if (this.onDeclineCallback) this.onDeclineCallback(req);
+  }
+
+  public declineIncomingRequest(): void {
+    this.declineIncoming();
   }
 
   public render(ctx: CanvasRenderingContext2D, width: number, height: number): void {

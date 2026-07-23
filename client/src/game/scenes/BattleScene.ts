@@ -38,18 +38,22 @@ export class BattleScene implements Scene {
   private activeMoves: number[] = [];
   private showPartyModal: boolean = false;
 
+  private onExitCallback?: () => void;
+
   constructor(
     renderer: Renderer,
     inputManager: InputManager,
     networkClient: NetworkClient,
     audioManager: AudioManager | null,
-    startPacket: BattleStartPacket
+    startPacket: BattleStartPacket,
+    onExit?: () => void
   ) {
     this.rendererEngine = renderer;
     this.inputManager = inputManager;
     this.networkClient = networkClient;
     this.audioManager = audioManager;
     this.startPacket = startPacket;
+    this.onExitCallback = onExit;
 
     this.p1Monsters = startPacket.playerMonsters || [];
     this.p2Monsters = startPacket.opponentMonsters || [];
@@ -207,6 +211,9 @@ export class BattleScene implements Scene {
   }
 
   private exitBattle(): void {
+    if (this.onExitCallback) {
+      this.onExitCallback();
+    }
     const game = (window as any).__game;
     if (game && game.sceneManager) {
       game.sceneManager.pop();

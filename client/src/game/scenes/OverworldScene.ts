@@ -61,6 +61,7 @@ import { ControlsHUD } from '../ui/hud/ControlsHUD.js';
 
 import { BattleRequestManager } from '../battle/BattleRequestManager.js';
 import { BattleTransitionManager } from '../battle/BattleTransitionManager.js';
+import { BattleScene } from './BattleScene.js';
 
 export class OverworldScene implements Scene {
   private renderer: Renderer;
@@ -236,13 +237,22 @@ export class OverworldScene implements Scene {
       this.networkClient.on(PacketType.BattleStart, (p: any) => {
         this.battleRequestManager.clearOutgoingRequest();
         this.battleRequestManager.clearIncomingRequest();
-        this.player.state = PlayerState.Battling; // Freeze BOTH players now after agreement!
+        this.player.state = PlayerState.Battling; // Freeze player during battle transition
 
         this.battleTransitionManager.startTransition('pvp', 600, () => {
           const game = (window as any).__game;
-          import('./BattleScene.js').then(m => {
-            game.sceneManager.push(new m.BattleScene(this.renderer, this.inputManager, this.networkClient!, this.audioManager, p));
-          });
+          if (game && game.sceneManager) {
+            game.sceneManager.push(new BattleScene(
+              this.renderer,
+              this.inputManager,
+              this.networkClient!,
+              this.audioManager,
+              p,
+              () => {
+                this.player.state = PlayerState.Walking;
+              }
+            ));
+          }
         });
       });
 
