@@ -37,34 +37,52 @@ export class BattleManager {
 
     if (!challenger.playerData || !challenger.playerData.party || challenger.playerData.party.length === 0) {
       this.server.send(challenger, {
-        type: 37, // BattleChallengeResult
+        type: PacketType.BattleChallengeResult,
         accepted: false,
         message: "You need a monster to battle!"
-      } as any);
+      } as BattleChallengeResultPacket);
       return;
     }
 
     if (!target.playerData || !target.playerData.party || target.playerData.party.length === 0) {
       this.server.send(challenger, {
-        type: 37, // BattleChallengeResult
+        type: PacketType.BattleChallengeResult,
         accepted: false,
         message: "That player has no monsters to battle."
-      } as any);
+      } as BattleChallengeResultPacket);
       return;
     }
 
-
-    if (this.pendingChallenges.has(challenger.id)) return; // Already challenging
-
-    // Verify distance (optional)
-
-    const timeout = setTimeout(() => {
-      this.pendingChallenges.delete(challenger.id);
+    if (this.pendingChallenges.has(challenger.id)) {
       this.server.send(challenger, {
         type: PacketType.BattleChallengeResult,
         accepted: false,
-        message: "The battle request timed out."
+        message: "You already have a pending battle request."
       } as BattleChallengeResultPacket);
+      return;
+    }
+
+    // Check if target is already being challenged
+    for (const [cId, challenge] of this.pendingChallenges.entries()) {
+      if (challenge.targetId === target.id) {
+        this.server.send(challenger, {
+          type: PacketType.BattleChallengeResult,
+          accepted: false,
+          message: "That player is currently processing another request."
+        } as BattleChallengeResultPacket);
+        return;
+      }
+    }
+
+    const timeout = setTimeout(() => {
+      this.pendingChallenges.delete(challenger.id);
+      const timeoutMsg: BattleChallengeResultPacket = {
+        type: PacketType.BattleChallengeResult,
+        accepted: false,
+        message: "The battle request timed out."
+      };
+      this.server.send(challenger, timeoutMsg);
+      this.server.send(target, timeoutMsg);
     }, 30000);
 
     this.pendingChallenges.set(challenger.id, { targetId: target.id, timeout });
@@ -76,23 +94,71 @@ export class BattleManager {
     } as BattleChallengeResponsePacket);
   }
 
-  handleChallengeAnswer(target: ClientState, packet: BattleChallengeAnswerPacket) {
-    const challenge = this.pendingChallenges.get(packet.challengerId);
-    if (!challenge || challenge.targetId !== target.id) return; // Invalid
+  handleChallengeAnswer(sender: ClientState, packet: BattleChallengeAnswerPacket) {
+    // Check if sender is challenger cancelling or target answering
+    let challengerId = packet.challengerId;
+    if (sender.id === packet.challengerId) {
+      // Challenger is cancelling
+      const challenge = this.pendingChallenges.get(sender.id);
+      if (!challenge) return;
+
+      clearTimeout(challenge.timeout);
+      this.pendingChallenges.delete(sender.id);
+
+      const target = this.server.getClient(challenge.targetId);
+      const cancelMsg: BattleChallengeResultPacket = {
+        type: PacketType.BattleChallengeResult,
+        accepted: false,
+        message: "Battle request cancelled."
+      };
+
+      this.server.send(sender, cancelMsg);
+      if (target) {
+        this.server.send(target, cancelMsg);
+      }
+      return;
+    }
+
+    // Sender is target answering
+    const challenge = this.pendingChallenges.get(challengerId);
+    if (!challenge || challenge.targetId !== sender.id) return;
 
     clearTimeout(challenge.timeout);
-    this.pendingChallenges.delete(packet.challengerId);
+    this.pendingChallenges.delete(challengerId);
 
-    const challenger = this.server.getClient(packet.challengerId);
-    if (!challenger) return;
+    const challenger = this.server.getClient(challengerId);
+    const target = sender;
 
-    this.server.send(challenger, {
+    const resultMsg: BattleChallengeResultPacket = {
       type: PacketType.BattleChallengeResult,
-      accepted: packet.accept
-    } as BattleChallengeResultPacket);
+      accepted: packet.accept,
+      message: packet.accept ? undefined : `${target.username} declined the challenge.`
+    };
 
-    if (packet.accept) {
+    if (challenger) this.server.send(challenger, resultMsg);
+    this.server.send(target, resultMsg);
+
+    if (packet.accept && challenger) {
       this.startPvPBattle(challenger, target);
+    }
+  }
+
+  handleClientDisconnect(clientId: string) {
+    for (const [challengerId, challenge] of this.pendingChallenges.entries()) {
+      if (challengerId === clientId || challenge.targetId === clientId) {
+        clearTimeout(challenge.timeout);
+        this.pendingChallenges.delete(challengerId);
+
+        const otherId = challengerId === clientId ? challenge.targetId : challengerId;
+        const otherClient = this.server.getClient(otherId);
+        if (otherClient) {
+          this.server.send(otherClient, {
+            type: PacketType.BattleChallengeResult,
+            accepted: false,
+            message: "The other player disconnected."
+          } as BattleChallengeResultPacket);
+        }
+      }
     }
   }
 

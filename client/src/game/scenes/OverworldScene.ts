@@ -24,6 +24,7 @@ import {
   GAME_WIDTH,
   GAME_HEIGHT,
   PacketType,
+  PlayerState,
   WelcomePacket,
   MapChangeResponsePacket,
   MapChangeRequestPacket,
@@ -121,6 +122,12 @@ export class OverworldScene implements Scene {
   private combatManager: OverworldCombatManager;
   private totalAnimTime: number = 0;
 
+  // Non-blocking Battle Request state
+  private pendingOutgoingBattleRequest: { targetId: string; targetName: string } | null = null;
+  private pendingIncomingBattleRequest: { challengerId: string; challengerName: string } | null = null;
+  private acceptBtnBounds = { x: 0, y: 0, w: 0, h: 0 };
+  private declineBtnBounds = { x: 0, y: 0, w: 0, h: 0 };
+
   constructor(
     renderer: Renderer,
     inputManager: InputManager,
@@ -178,26 +185,37 @@ export class OverworldScene implements Scene {
     this.combatManager = new OverworldCombatManager(this.player, this.particleSystem);
     
     if (this.networkClient) {
-      
-      this.networkClient.on(35 /* BattleChallengeResponse */, (p: any) => {
-        import('../ui/menus/BattleRequestMenu.js').then(m => {
-          this.menuManager.openMenu(new m.BattleRequestMenu(p.challengerId, p.challengerName, this.networkClient!, () => {
-            this.menuManager.closeMenu();
-          }));
-        });
+      this.networkClient.on(PacketType.BattleChallengeResponse, (p: any) => {
+        this.pendingIncomingBattleRequest = {
+          challengerId: p.challengerId,
+          challengerName: p.challengerName
+        };
+        this.player.state = PlayerState.BattleRequestPending;
+        if (this.audioManager) this.audioManager.playSFX('open');
       });
-      this.networkClient.on(37 /* BattleChallengeResult */, (p: any) => {
+
+      this.networkClient.on(PacketType.BattleChallengeResult, (p: any) => {
         if (!p.accepted) {
-           this.controlsHUD.showToast(p.message || 'Battle request declined.', '❌', 3.0);
+          this.pendingOutgoingBattleRequest = null;
+          this.pendingIncomingBattleRequest = null;
+          if (this.player.state === PlayerState.BattleRequestPending) {
+            this.player.state = PlayerState.Walking;
+          }
+          this.controlsHUD.showToast(p.message || 'Battle request ended.', '❌', 3.0);
         }
       });
-      this.networkClient.on(30 /* BattleStart */, (p: any) => {
+
+      this.networkClient.on(PacketType.BattleStart, (p: any) => {
+        this.pendingOutgoingBattleRequest = null;
+        this.pendingIncomingBattleRequest = null;
+        this.player.state = PlayerState.Battling; // Freeze BOTH players now after agreement!
         const game = (window as any).__game;
         import('./BattleScene.js').then(m => {
           game.sceneManager.push(new m.BattleScene(this.renderer, this.inputManager, this.networkClient!, this.audioManager, p));
         });
       });
-this.networkClient.on(PacketType.Welcome, this.onWelcome);
+
+      this.networkClient.on(PacketType.Welcome, this.onWelcome);
       this.networkClient.on(PacketType.MapChangeResponse, this.onMapChange);
       this.networkClient.on(PacketType.PlayerJoin, this.onPlayerJoin);
       this.networkClient.on(PacketType.PlayerLeave, this.onPlayerLeave);
@@ -217,6 +235,28 @@ this.networkClient.on(PacketType.Welcome, this.onWelcome);
       const scale = this.renderer.getScale();
       const clickX = (e.clientX - rect.left) / scale;
       const clickY = (e.clientY - rect.top) / scale;
+
+      // 1. Check Battle Request overlay clicks
+      if (this.pendingIncomingBattleRequest) {
+        if (
+          clickX >= this.acceptBtnBounds.x &&
+          clickX <= this.acceptBtnBounds.x + this.acceptBtnBounds.w &&
+          clickY >= this.acceptBtnBounds.y &&
+          clickY <= this.acceptBtnBounds.y + this.acceptBtnBounds.h
+        ) {
+          this.acceptIncomingBattleRequest();
+          return;
+        }
+        if (
+          clickX >= this.declineBtnBounds.x &&
+          clickX <= this.declineBtnBounds.x + this.declineBtnBounds.w &&
+          clickY >= this.declineBtnBounds.y &&
+          clickY <= this.declineBtnBounds.y + this.declineBtnBounds.h
+        ) {
+          this.declineIncomingBattleRequest();
+          return;
+        }
+      }
 
 
 
@@ -625,6 +665,33 @@ private getNPCInFront(): NPCDefinition | null {
       if (this.inputManager.justPressed('Digit4')) this.combatManager.throwCapturePod();
     }
 
+    // Outgoing battle request cancellation check
+    if (this.pendingOutgoingBattleRequest) {
+      if (this.inputManager.justPressed('KeyC') || this.inputManager.justPressed('Escape')) {
+        if (this.networkClient) {
+          this.networkClient.send({
+            type: PacketType.BattleChallengeAnswer,
+            challengerId: this.networkClient.getId(),
+            accept: false
+          });
+        }
+        this.pendingOutgoingBattleRequest = null;
+        if (this.player.state === PlayerState.BattleRequestPending) {
+          this.player.state = PlayerState.Walking;
+        }
+        this.controlsHUD.showToast('Cancelled battle request.', 'ℹ️', 2.5);
+      }
+    }
+
+    // Incoming battle request response check (Player B can move while deciding)
+    if (this.pendingIncomingBattleRequest) {
+      if (this.inputManager.justPressed('KeyY') || this.inputManager.justPressed('Enter')) {
+        this.acceptIncomingBattleRequest();
+      } else if (this.inputManager.justPressed('KeyN') || this.inputManager.justPressed('Escape')) {
+        this.declineIncomingBattleRequest();
+      }
+    }
+
     // Active Companion Follower update
     if (this.player.hasStarter && this.player.party && this.player.party.length > 0) {
       const activeIdx = this.player.activeFollowerIndex || 0;
@@ -798,13 +865,13 @@ private getNPCInFront(): NPCDefinition | null {
         
         const op = this.getOtherPlayerInFront();
         if (op) {
-          if (this.networkClient) {
-            this.networkClient.send({
-              type: 34, // BattleChallengeRequest
-              targetPlayerId: op.id
-            } as any);
-            this.controlsHUD.showToast(`Sent battle request to ${op.username}!`, '⚔️', 3.0);
-          }
+          import('../ui/menus/PlayerInteractionMenu.js').then(m => {
+            this.menuManager.openMenu(new m.PlayerInteractionMenu(op.username, (option) => {
+              if (option === 'Challenge to Battle') {
+                this.sendBattleChallenge(op);
+              }
+            }));
+          });
           this.inputManager.consume('Space');
           this.inputManager.consume('Enter');
           interacted = true;
@@ -1289,6 +1356,9 @@ private getNPCInFront(): NPCDefinition | null {
       biomeY + biomeH + 3
     );
 
+    // Render Non-Blocking Battle Request Overlay
+    this.renderBattleRequestOverlay(ctx);
+
     // Render Menus
     this.menuManager.render(ctx);
 
@@ -1321,6 +1391,132 @@ private getNPCInFront(): NPCDefinition | null {
 
     for (let i = 0; i < debugInfo.length; i++) {
       ctx.fillText(debugInfo[i], 4, 4 + i * 12);
+    }
+  }
+
+  private sendBattleChallenge(op: any): void {
+    if (this.pendingOutgoingBattleRequest || this.pendingIncomingBattleRequest || this.player.state === PlayerState.BattleRequestPending) {
+      this.controlsHUD.showToast('You already have a pending battle request.', '⚠️', 3.0);
+      return;
+    }
+    if (this.networkClient) {
+      this.networkClient.send({
+        type: PacketType.BattleChallengeRequest,
+        targetPlayerId: op.id
+      });
+      this.pendingOutgoingBattleRequest = {
+        targetId: op.id,
+        targetName: op.username
+      };
+      this.player.state = PlayerState.BattleRequestPending;
+      this.controlsHUD.showToast(`Sent battle request to ${op.username}! Press C to cancel.`, '⚔️', 4.0);
+    }
+  }
+
+  private acceptIncomingBattleRequest(): void {
+    if (!this.pendingIncomingBattleRequest || !this.networkClient) return;
+    this.networkClient.send({
+      type: PacketType.BattleChallengeAnswer,
+      challengerId: this.pendingIncomingBattleRequest.challengerId,
+      accept: true
+    });
+    this.controlsHUD.showToast('Accepted battle challenge!', '⚔️', 2.5);
+    this.pendingIncomingBattleRequest = null;
+  }
+
+  private declineIncomingBattleRequest(): void {
+    if (!this.pendingIncomingBattleRequest || !this.networkClient) return;
+    this.networkClient.send({
+      type: PacketType.BattleChallengeAnswer,
+      challengerId: this.pendingIncomingBattleRequest.challengerId,
+      accept: false
+    });
+    this.pendingIncomingBattleRequest = null;
+    if (this.player.state === PlayerState.BattleRequestPending) {
+      this.player.state = PlayerState.Walking;
+    }
+    this.controlsHUD.showToast('Declined battle request.', '❌', 2.5);
+  }
+
+  private renderBattleRequestOverlay(ctx: CanvasRenderingContext2D): void {
+    if (this.pendingIncomingBattleRequest) {
+      ctx.save();
+      const boxW = 220;
+      const boxH = 48;
+      const boxX = (GAME_WIDTH - boxW) / 2;
+      const boxY = 16;
+
+      ctx.fillStyle = 'rgba(12, 18, 34, 0.92)';
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+      ctx.strokeStyle = '#4deeea';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '7px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`⚔️ ${this.pendingIncomingBattleRequest.challengerName} wants to battle!`, boxX + boxW / 2, boxY + 6);
+
+      const btnW = 90;
+      const btnH = 18;
+      const btnY = boxY + 22;
+
+      // Accept Button
+      const acceptX = boxX + 12;
+      this.acceptBtnBounds = { x: acceptX, y: btnY, w: btnW, h: btnH };
+
+      ctx.fillStyle = '#27ae60';
+      ctx.fillRect(acceptX, btnY, btnW, btnH);
+      ctx.strokeStyle = '#2ecc71';
+      ctx.strokeRect(acceptX, btnY, btnW, btnH);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('ACCEPT [Y/Enter]', acceptX + btnW / 2, btnY + btnH / 2);
+
+      // Decline Button
+      const declineX = boxX + boxW - btnW - 12;
+      this.declineBtnBounds = { x: declineX, y: btnY, w: btnW, h: btnH };
+
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(declineX, btnY, btnW, btnH);
+      ctx.strokeStyle = '#e74c3c';
+      ctx.strokeRect(declineX, btnY, btnW, btnH);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('DECLINE [N/Esc]', declineX + btnW / 2, btnY + btnH / 2);
+
+      ctx.restore();
+    } else if (this.pendingOutgoingBattleRequest) {
+      ctx.save();
+      const boxW = 220;
+      const boxH = 22;
+      const boxX = (GAME_WIDTH - boxW) / 2;
+      const boxY = 16;
+
+      ctx.fillStyle = 'rgba(12, 18, 34, 0.92)';
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+      ctx.strokeStyle = '#f1c40f';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+      ctx.fillStyle = '#f1c40f';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(
+        `⚔️ Request sent to ${this.pendingOutgoingBattleRequest.targetName}... [C/Esc] Cancel`,
+        boxX + boxW / 2,
+        boxY + boxH / 2
+      );
+
+      ctx.restore();
     }
   }
 

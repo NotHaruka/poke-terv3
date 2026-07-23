@@ -174,6 +174,7 @@ export enum PlayerState {
   Battling = 3,
   MenuOpen = 4,
   Cutscene = 5,
+  BattleRequestPending = 6,
 }
 
 export interface PlayerProfile {

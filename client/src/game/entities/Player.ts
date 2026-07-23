@@ -92,7 +92,12 @@ export class Player {
   }
 
   update(dt: number): void {
-    if (this.state === PlayerState.MenuOpen || this.state === PlayerState.Cutscene || this.state === PlayerState.Interacting) {
+    if (
+      this.state === PlayerState.MenuOpen ||
+      this.state === PlayerState.Cutscene ||
+      this.state === PlayerState.Interacting ||
+      this.state === PlayerState.Battling
+    ) {
       this.moving = false;
       this.speed = 0;
       this.targetSpeed = 0;
@@ -104,10 +109,14 @@ export class Player {
     // Determine target speed based on shift
     if (this.inputManager.isShiftHeld()) {
       this.maxSpeed = PLAYER_WALK_SPEED * 1.5; // ~1.5x walking speed for running
-      this.state = PlayerState.Running;
+      if (this.state !== PlayerState.BattleRequestPending) {
+        this.state = PlayerState.Running;
+      }
     } else {
       this.maxSpeed = PLAYER_WALK_SPEED;
-      this.state = PlayerState.Walking;
+      if (this.state !== PlayerState.BattleRequestPending) {
+        this.state = PlayerState.Walking;
+      }
     }
 
     // Get input direction

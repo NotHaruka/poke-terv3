@@ -173,6 +173,7 @@ export class GameState {
   }
 
   public removeClient(playerId: string, temporary: boolean = false): void {
+    this.battleManager.handleClientDisconnect(playerId);
     const client = this.clients.get(playerId);
     if (client) {
       if (client.disconnectTimer) {
