@@ -792,6 +792,7 @@ private getNPCInFront(): NPCDefinition | null {
         this.player.update(dt);
       }
 
+      let interacted = false;
       // Check NPC / Furniture interactions
       if (!this.menuManager.isOpen() && (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter'))) {
         
@@ -804,28 +805,39 @@ private getNPCInFront(): NPCDefinition | null {
             } as any);
             this.controlsHUD.showToast(`Sent battle request to ${op.username}!`, '⚔️', 3.0);
           }
-          return;
+          this.inputManager.consume('Space');
+          this.inputManager.consume('Enter');
+          interacted = true;
         }
         
-const npc = this.getNPCInFront();
-        if (npc) {
-          if (npc.sprite === 'clerk' || npc.name.includes('Mart Clerk')) {
-            this.menuManager.openMenu(new PokemartMenu(this.player));
-            return;
-          }
+        if (!interacted) {
+          const npc = this.getNPCInFront();
+          if (npc) {
+            if (npc.sprite === 'clerk' || npc.name.includes('Mart Clerk')) {
+              this.menuManager.openMenu(new PokemartMenu(this.player));
+              this.inputManager.consume('Space');
+              this.inputManager.consume('Enter');
+              interacted = true;
+            }
 
-          this.isDialogueActive = true;
-          this.activeNPC = npc;
-          this.activeDialogueLines = npc.dialogues[0];
-          this.currentDialogueIndex = 0;
+            if (!interacted) {
+              this.isDialogueActive = true;
+              this.activeNPC = npc;
+              this.activeDialogueLines = npc.dialogues[0];
+              this.currentDialogueIndex = 0;
 
-          switch (this.player.direction) {
-            case 'up': npc.direction = 'down'; break;
-            case 'down': npc.direction = 'up'; break;
-            case 'left': npc.direction = 'right'; break;
-            case 'right': npc.direction = 'left'; break;
+              switch (this.player.direction) {
+                case 'up': npc.direction = 'down'; break;
+                case 'down': npc.direction = 'up'; break;
+                case 'left': npc.direction = 'right'; break;
+                case 'right': npc.direction = 'left'; break;
+              }
+              interacted = true;
+            }
           }
-        } else if (this.doorSystem.isInInterior) {
+        }
+        
+        if (!interacted && this.doorSystem.isInInterior) {
           const pGx = Math.floor(this.player.getCenterX() / 16);
           const pGy = Math.floor(this.player.getCenterY() / 16);
           let checkGx = pGx;
