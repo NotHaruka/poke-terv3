@@ -35,6 +35,25 @@ export class BattleManager {
     const target = this.server.getClient(packet.targetPlayerId);
     if (!target) return;
 
+    if (!challenger.playerData || !challenger.playerData.party || challenger.playerData.party.length === 0) {
+      this.server.send(challenger, {
+        type: 37, // BattleChallengeResult
+        accepted: false,
+        message: "You need a monster to battle!"
+      } as any);
+      return;
+    }
+
+    if (!target.playerData || !target.playerData.party || target.playerData.party.length === 0) {
+      this.server.send(challenger, {
+        type: 37, // BattleChallengeResult
+        accepted: false,
+        message: "That player has no monsters to battle."
+      } as any);
+      return;
+    }
+
+
     if (this.pendingChallenges.has(challenger.id)) return; // Already challenging
 
     // Verify distance (optional)

@@ -46,13 +46,13 @@ export class BattleScene implements Scene {
     this.p1Monsters = startPacket.playerMonsters;
     this.p2Monsters = startPacket.opponentMonsters;
     
-    this.p1Active = this.p1Monsters.find(m => m.currentHp > 0) || this.p1Monsters[0];
-    this.p2Active = this.p2Monsters.find(m => m.currentHp > 0) || this.p2Monsters[0];
+    this.p1Active = this.p1Monsters?.find(m => m.currentHp > 0) || this.p1Monsters?.[0];
+    this.p2Active = this.p2Monsters?.find(m => m.currentHp > 0) || this.p2Monsters?.[0];
   }
 
   init(): void {
     if (this.audioManager) {
-      this.audioManager.playBGM('battle', true); // Assuming there's a battle BGM
+      this.audioManager.playMusic('/battle.mp3'); // Assuming there's a battle BGM
     }
     this.currentMessage = `Battle started against ${this.startPacket.opponentName}!`;
     this.state = 'ANIMATING'; // just show message first
@@ -64,7 +64,7 @@ export class BattleScene implements Scene {
   destroy(): void {
     if (this.audioManager) {
       // Restore overworld BGM
-      this.audioManager.playBGM('overworld', true);
+      this.audioManager.playMusic('/sunlit_safari.mp3');
     }
     this.networkClient.off(32 /* BattleResult */, this.onBattleResult);
   }
@@ -191,11 +191,13 @@ export class BattleScene implements Scene {
     ctx.fill();
     ctx.fillStyle = 'black';
     ctx.font = '10px "Press Start 2P"';
-    ctx.fillText(`${getMonsterSpecies(this.p2Active.speciesId)?.name} Lvl ${this.p2Active.level}`, w - 160, 30);
-    ctx.fillStyle = 'red';
-    ctx.fillRect(w - 160, 40, 100, 10);
-    ctx.fillStyle = '#0f0';
-    ctx.fillRect(w - 160, 40, 100 * (this.p2Active.currentHp / this.p2Active.maxHp), 10);
+    if (this.p2Active) {
+      ctx.fillText(`${getMonsterSpecies(this.p2Active.speciesId)?.name || 'Unknown'} Lvl ${this.p2Active.level}`, w - 160, 30);
+      ctx.fillStyle = 'red';
+      ctx.fillRect(w - 160, 40, 100, 10);
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(w - 160, 40, 100 * (this.p2Active.currentHp / this.p2Active.maxHp), 10);
+    }
 
     // Draw Player
     ctx.fillStyle = 'white';
@@ -203,11 +205,13 @@ export class BattleScene implements Scene {
     ctx.arc(80, h - 120, 40, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = 'black';
-    ctx.fillText(`${getMonsterSpecies(this.p1Active.speciesId)?.name} Lvl ${this.p1Active.level}`, 20, h - 80);
-    ctx.fillStyle = 'red';
-    ctx.fillRect(20, h - 70, 100, 10);
-    ctx.fillStyle = '#0f0';
-    ctx.fillRect(20, h - 70, 100 * (this.p1Active.currentHp / this.p1Active.maxHp), 10);
+    if (this.p1Active) {
+      ctx.fillText(`${getMonsterSpecies(this.p1Active.speciesId)?.name || 'Unknown'} Lvl ${this.p1Active.level}`, 20, h - 80);
+      ctx.fillStyle = 'red';
+      ctx.fillRect(20, h - 70, 100, 10);
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(20, h - 70, 100 * (this.p1Active.currentHp / this.p1Active.maxHp), 10);
+    }
     
     // UI Box
     const boxH = 60;

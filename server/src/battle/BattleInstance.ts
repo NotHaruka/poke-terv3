@@ -102,8 +102,8 @@ export class BattleInstance {
         winner
       };
       
-      this.server.sendTo(this.p1.id, res);
-      if (this.p2) this.server.sendTo(this.p2.id, res);
+      this.server.send(this.p1, res);
+      if (this.p2) this.server.send(this.p2, res);
 
       if (battleOver) {
         this.server.battleManager.endBattle(this.id, "KO");
