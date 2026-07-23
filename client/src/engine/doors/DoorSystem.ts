@@ -10,7 +10,7 @@ import { TransitionManager } from './TransitionManager.js';
 import { AudioManager } from '../AudioManager.js';
 import { Player } from '../../game/entities/Player.js';
 import { Camera } from '../Camera.js';
-import { PacketType } from 'poke-ter-shared';
+import { PacketType, findSafeSpawn } from 'poke-ter-shared';
 import { NetworkClient } from '../../game/network/NetworkClient.js';
 
 export interface SavedOverworldState {
@@ -33,7 +33,7 @@ export class DoorSystem {
   // Active scene mode tracking
   public isInInterior: boolean = false;
   public currentSeed: number = 0;
-  private savedOverworldState: SavedOverworldState | null = null;
+  public savedOverworldState: SavedOverworldState | null = null;
   private lastTriggerTile: { x: number; y: number } | null = null;
 
   constructor(
@@ -112,6 +112,10 @@ export class DoorSystem {
       seed: this.currentSeed,
     };
 
+    const targetMapId = currentOverworldMapId && !interiorMapId.includes(':')
+      ? `${currentOverworldMapId}:${interiorMapId}`
+      : interiorMapId;
+
     this.transitionManager.startTransition(() => {
       // Load Interior Map
       const interior = this.interiorManager.loadInterior(interiorMapId);
@@ -138,7 +142,7 @@ export class DoorSystem {
       if (this.networkClient && this.networkClient.isConnected()) {
         this.networkClient.send({
           type: PacketType.MapChangeRequest,
-          targetMapId: interiorMapId,
+          targetMapId: targetMapId,
           spawnX: spawnX,
           spawnY: spawnY,
           spawnDirection: this.player.direction,
@@ -173,8 +177,9 @@ export class DoorSystem {
       this.buildingManager.setMap(savedState.mapId, savedState.seed || 0);
 
       // Spawn player outside door
-      this.player.x = savedState.x;
-      this.player.y = savedState.y;
+      const safePos = findSafeSpawn(savedState.seed || 0, savedState.x, savedState.y, savedState.mapId);
+      this.player.x = safePos.x;
+      this.player.y = safePos.y;
       this.player.direction = savedState.direction;
 
       // Snap Camera

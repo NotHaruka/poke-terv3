@@ -33,6 +33,7 @@ import {
   PlayerMovePacket,
   getBiomeAt,
   getNPCsForMap,
+  findSafeSpawn,
   NPCDefinition
 } from 'poke-ter-shared';
 
@@ -288,8 +289,21 @@ export class OverworldScene implements Scene {
     }
 
     if (welcome.playerData) {
-      console.log('[Multiplayer] Loaded server-authoritative save data');
-      this.player.loadPlayerData(welcome.playerData);
+      const savedProfileStr = localStorage.getItem('poketer_player_profile');
+      if (savedProfileStr) {
+        try {
+          const localProf = JSON.parse(savedProfileStr);
+          if (!welcome.playerData.profile || welcome.playerData.profile.name === localProf.name) {
+            console.log('[Multiplayer] Loaded server-authoritative save data');
+            this.player.loadPlayerData(welcome.playerData);
+          } else {
+            console.log('[Multiplayer] Server save mismatch with local profile. Overwriting server save with new profile.');
+            this.saveGame(false);
+          }
+        } catch {
+          this.player.loadPlayerData(welcome.playerData);
+        }
+      }
     }
 
     this.setMap(welcome.mapId);
@@ -378,6 +392,24 @@ export class OverworldScene implements Scene {
       this.npcs = interior ? interior.npcs : [];
       this.doorSystem.isInInterior = true;
       this.lastBiomeName = 'Building';
+
+      // Auto-reconstruct savedOverworldState for exit door lookup
+      const parentMapId = mapId.includes(':') ? mapId.split(':')[0] : 'city';
+      const baseInteriorId = mapId.includes(':') ? mapId.split(':')[1] : mapId;
+      const seed = this.chunkManager.currentSeed;
+      this.buildingManager.setMap(parentMapId, seed);
+      const bInfo = this.buildingManager.getBuildingForInterior(baseInteriorId);
+      if (bInfo) {
+        const def = bInfo.definition;
+        const inst = bInfo.building;
+        this.doorSystem.savedOverworldState = {
+          mapId: parentMapId,
+          x: (inst.tileX + def.doorOffsetX) * 16,
+          y: (inst.tileY + def.doorOffsetY + 1) * 16,
+          direction: 'down',
+          seed
+        };
+      }
     } else {
       const seed = this.chunkManager.currentSeed;
       this.doorSystem.setSeed(seed);
@@ -387,9 +419,15 @@ export class OverworldScene implements Scene {
 
       this.npcs = getNPCsForMap(mapId, seed);
 
+      // Verify and snap player to a safe walkable position
+      const safePos = findSafeSpawn(seed, this.player.x, this.player.y, mapId);
+      this.player.x = safePos.x;
+      this.player.y = safePos.y;
+      this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
+
       const playerGx = Math.floor(this.player.x / 16);
       const playerGy = Math.floor(this.player.y / 16);
-      const currentBiome = getBiomeAt(playerGx, playerGy, seed);
+      const currentBiome = getBiomeAt(playerGx, playerGy, seed, mapId);
       this.lastBiomeName = currentBiome.name;
 
       // Spawn wild roaming monsters for route maps
@@ -412,6 +450,15 @@ export class OverworldScene implements Scene {
       };
       this.npcColliders.push(collider);
       this.collisionSystem.add(collider);
+    }
+
+    // Fix: Synchronously load chunks surrounding the player immediately after setting the map.
+    // This ensures that tile colliders are added to the CollisionSystem before the 
+    // first frame of player.update() can execute. This prevents a race condition 
+    // on reconnect where the player could move freely through unloaded solid tiles for 
+    // one frame and then get stuck when the chunks loaded subsequently.
+    if (!this.doorSystem.isInInterior) {
+      this.chunkManager.update(this.player.getCenterX(), this.player.getCenterY());
     }
 
     this.bannerAlpha = 1;

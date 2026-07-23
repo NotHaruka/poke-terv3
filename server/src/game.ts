@@ -1,6 +1,16 @@
 import { WebSocket } from 'ws';
 import { ClientState, MapInstance } from './types.js';
-import { AnyPacket, findSafeSpawn } from 'poke-ter-shared';
+import { AnyPacket, findSafeSpawn, WORLD_SEED } from 'poke-ter-shared';
+
+export function getRouteSeed(mapId: string, worldSeed: number = WORLD_SEED): number {
+  if (mapId === 'city') return 0;
+  let hash = worldSeed;
+  for (let i = 0; i < mapId.length; i++) {
+    hash = ((hash << 5) - hash) + mapId.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 2147483647;
+}
 
 export class GameState {
   private nextId = 1;
@@ -24,7 +34,16 @@ export class GameState {
     const now = Date.now();
     for (const [mapId, map] of this.maps) {
       if (map.type === 'route') {
-        if (map.players.size === 0) {
+        const playersOnRoute = map.players.size;
+        let playersInRouteInteriors = 0;
+        for (const m of this.maps.values()) {
+          if (m.parentMapId === mapId && m.players.size > 0) {
+            playersInRouteInteriors += m.players.size;
+          }
+        }
+
+        // Only cleanup route if no players are on the route AND no players are inside houses on this route
+        if (playersOnRoute === 0 && playersInRouteInteriors === 0) {
           if (!this.mapEmptyTime.has(mapId)) {
             this.mapEmptyTime.set(mapId, now);
           } else {
@@ -37,7 +56,7 @@ export class GameState {
             }
           }
         } else {
-          // Reset timer if someone joined
+          // Reset timer if someone joined or is inside a house on this route
           this.mapEmptyTime.delete(mapId);
         }
       }
@@ -49,7 +68,7 @@ export class GameState {
   }
 
   public createRouteMap(id: string): MapInstance {
-    const seed = Math.floor(Math.random() * 2147483647);
+    const seed = getRouteSeed(id);
     const map: MapInstance = {
       id,
       seed,
@@ -61,10 +80,23 @@ export class GameState {
   }
 
   public createInteriorMap(id: string): MapInstance {
+    let parentMapId: string | undefined;
+    let seed = 0;
+    if (id.includes(':')) {
+      parentMapId = id.split(':')[0];
+      const parent = this.maps.get(parentMapId);
+      if (parent) {
+        seed = parent.seed;
+      } else if (parentMapId.startsWith('route_')) {
+        seed = getRouteSeed(parentMapId);
+      }
+    }
+
     const map: MapInstance = {
       id,
-      seed: 0,
+      seed,
       type: 'interior',
+      parentMapId,
       players: new Set(),
     };
     this.maps.set(id, map);

@@ -87,16 +87,22 @@ function handleHello(gameState: GameState, client: ClientState, packet: HelloPac
   // Ensure map exists if loaded from save
   let map = gameState.getMap(client.mapInstanceId);
   if (!map) {
-      if (client.mapInstanceId.startsWith('route_')) {
-          map = gameState.createRouteMap(client.mapInstanceId);
-      } else if (client.mapInstanceId.includes('interior')) {
+      if (client.mapInstanceId.includes('interior')) {
           map = gameState.createInteriorMap(client.mapInstanceId);
+      } else if (client.mapInstanceId.startsWith('route_')) {
+          map = gameState.createRouteMap(client.mapInstanceId);
       } else {
           client.mapInstanceId = 'city';
           map = gameState.getMap('city')!;
       }
   }
   map.players.add(client.id);
+
+  // Validate player position is safe on overworld maps
+  if (!client.mapInstanceId.includes('interior')) {
+    const safePos = findSafeSpawn(map.seed, client.position.x, client.position.y, client.mapInstanceId);
+    client.position = safePos;
+  }
 
   // Compile active players for the welcome list (only in the same map)
   const players = gameState.getClientsInMap(client.mapInstanceId)

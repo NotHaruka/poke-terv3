@@ -10,9 +10,13 @@ export class AudioManager {
   public userInteracted = false;
 
   constructor() {
-    // Persistent global interaction listeners to resume audio context and music robustly
+    this.attachInteractionListeners();
+  }
+
+  public attachInteractionListeners(): void {
+    if (typeof document === 'undefined') return;
+
     const resumeAudio = () => {
-      if (this.userInteracted) return;
       this.userInteracted = true;
       
       // Resume AudioContext if it exists or initialize one
@@ -23,38 +27,21 @@ export class AudioManager {
         this.ctx.resume().catch(() => {});
       }
 
-      if (this.pendingMusicUrl) {
-        const url = this.pendingMusicUrl;
-        this.pendingMusicUrl = null;
-        this.playMusic(url);
-      } else if (this.currentAudio && this.currentTrackUrl) {
-        if (this.currentAudio.paused) {
-          this.currentAudio.play().catch(() => {
-            if (this.currentTrackUrl) this.playMusic(this.currentTrackUrl);
-          });
-        }
-      } else if (this.currentTrackUrl) {
-        const url = this.currentTrackUrl;
-        this.currentTrackUrl = null;
-        this.playMusic(url);
-      } else {
-        this.playMusic('/sunlit_safari.mp3');
-      }
+      const trackToPlay = this.pendingMusicUrl || this.currentTrackUrl || '/sunlit_safari.mp3';
+      this.pendingMusicUrl = null;
+      this.playMusic(trackToPlay);
 
       // Play a delightful tiny greeting chime on first unlock!
       this.playFanfare();
 
-      // Remove event listeners once unlocked
       document.removeEventListener('click', resumeAudio);
       document.removeEventListener('keydown', resumeAudio);
       document.removeEventListener('touchstart', resumeAudio);
     };
 
-    if (typeof document !== 'undefined') {
-      document.addEventListener('click', resumeAudio);
-      document.addEventListener('keydown', resumeAudio);
-      document.addEventListener('touchstart', resumeAudio);
-    }
+    document.addEventListener('click', resumeAudio, { once: true });
+    document.addEventListener('keydown', resumeAudio, { once: true });
+    document.addEventListener('touchstart', resumeAudio, { once: true });
   }
 
   private getCtx(): AudioContext {
@@ -80,55 +67,41 @@ export class AudioManager {
       return;
     }
 
-    if (this.currentTrackUrl === url && this.currentAudio && !this.currentAudio.paused) {
-      // Already playing this song!
+    if (this.currentAudio && this.currentTrackUrl === url && !this.currentAudio.paused) {
+      // Already playing this exact song!
       return;
     }
 
-    const oldAudio = this.currentAudio;
     this.currentTrackUrl = url;
 
-    // Instantiating and playing the new audio immediately ensures we stay within the browser's user gesture window
+    const oldAudio = this.currentAudio;
+
+    // Instantiating and playing the new audio
     const newAudio = new Audio(url);
     newAudio.loop = true;
-    newAudio.volume = 0; // start silent for fade in
+    newAudio.volume = this.musicVol; // Set volume directly so music is immediately audible
     this.currentAudio = newAudio;
 
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
 
-    newAudio.play().catch(err => {
-      console.log('[Poke-ter Audio] Autoplay blocked or play failed, will play upon user interaction.', err);
-      this.pendingMusicUrl = url;
-    });
-
-    // Fade out and stop the old track if it exists
-    if (oldAudio) {
-      this.fadeOutAndStop(oldAudio, fadeDurationMs, () => {});
+    const playPromise = newAudio.play();
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        this.pendingMusicUrl = null;
+      }).catch(err => {
+        console.warn('[Poke-ter Audio] Autoplay blocked or play failed, will retry on next user interaction.', err);
+        this.pendingMusicUrl = url;
+        this.userInteracted = false;
+        this.attachInteractionListeners();
+      });
     }
 
-    // Fade in the new audio
-    let currentVol = 0;
-    const steps = 20;
-    const intervalTime = fadeDurationMs / steps;
-    const targetVol = this.musicVol;
-
-    if (this.fadeInterval) clearInterval(this.fadeInterval);
-    
-    this.fadeInterval = setInterval(() => {
-      if (this.currentAudio !== newAudio) {
-        clearInterval(this.fadeInterval);
-        return;
-      }
-      currentVol += targetVol / steps;
-      if (currentVol >= targetVol) {
-        newAudio.volume = targetVol;
-        clearInterval(this.fadeInterval);
-      } else {
-        newAudio.volume = currentVol;
-      }
-    }, intervalTime);
+    // Fade out and stop the old track if it exists
+    if (oldAudio && oldAudio !== newAudio) {
+      this.fadeOutAndStop(oldAudio, fadeDurationMs, () => {});
+    }
   }
 
   private fadeOutAndStop(audio: HTMLAudioElement, durationMs: number, onComplete: () => void): void {

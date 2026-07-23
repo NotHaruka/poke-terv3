@@ -1,0 +1,90 @@
+{
+  "id": "player_0t2w4c6yt",
+  "username": "Larka",
+  "profile": {
+    "name": "Larka",
+    "bodyType": "male",
+    "hairStyle": "Short",
+    "hairColor": "#cc2222",
+    "skinTone": "#ffccaa",
+    "eyeColor": "#000000",
+    "shirtColor": "#3a8be8",
+    "pantsColor": "#1e5b9e",
+    "shoesColor": "#222222",
+    "hatType": "Cap",
+    "backpackType": "Standard"
+  },
+  "position": {
+    "x": 3824.4543497070295,
+    "y": 1919.4543097042308
+  },
+  "direction": "right",
+  "speed": 0,
+  "money": 500,
+  "party": [
+    {
+      "speciesId": 1,
+      "nickname": "Flamepup",
+      "level": 5,
+      "ivs": {
+        "hp": 20,
+        "attack": 20,
+        "defense": 20,
+        "spAttack": 20,
+        "spDefense": 20,
+        "speed": 20
+      },
+      "evs": {
+        "hp": 0,
+        "attack": 0,
+        "defense": 0,
+        "spAttack": 0,
+        "spDefense": 0,
+        "speed": 0
+      },
+      "nature": 0,
+      "currentHp": 20,
+      "maxHp": 20,
+      "stats": {
+        "hp": 20,
+        "attack": 12,
+        "defense": 10,
+        "spAttack": 11,
+        "spDefense": 10,
+        "speed": 11
+      },
+      "moves": [
+        1,
+        2
+      ],
+      "status": 0,
+      "friendship": 70,
+      "experience": 0,
+      "experienceToNext": 125
+    }
+  ],
+  "boxes": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "inventory": [
+    {
+      "itemId": 1,
+      "quantity": 10
+    },
+    {
+      "itemId": 3,
+      "quantity": 5
+    }
+  ],
+  "pokedex": [],
+  "badges": 0,
+  "currentMap": "route_4",
+  "storyFlags": {}
+}

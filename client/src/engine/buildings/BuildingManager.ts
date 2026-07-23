@@ -178,6 +178,23 @@ export class BuildingManager {
     return null;
   }
 
+  /** Get building for interior ID */
+  public getBuildingForInterior(interiorMapId: string): {
+    building: BuildingInstance;
+    definition: BuildingDefinition;
+  } | null {
+    const baseId = interiorMapId.includes(':') ? interiorMapId.split(':')[1] : interiorMapId;
+    for (const inst of this.instances) {
+      const def = BuildingRegistry.get(inst.definitionId);
+      if (!def) continue;
+
+      if (def.interiorMapId === baseId) {
+        return { building: inst, definition: def };
+      }
+    }
+    return null;
+  }
+
   /** Get building at tile coordinate */
   public getBuildingAt(gx: number, gy: number): {
     building: BuildingInstance;

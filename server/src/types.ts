@@ -4,7 +4,8 @@ import { PlayerProfile, PlayerData } from 'poke-ter-shared';
 export interface MapInstance {
   id: string;
   seed: number;
-  type: 'city' | 'route';
+  type: 'city' | 'route' | 'interior';
+  parentMapId?: string;
   players: Set<string>;
 }
 

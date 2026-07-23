@@ -1409,6 +1409,32 @@ export function getGlobalTile(gx: number, gy: number, seed: number, mapId: strin
 }
 
 export function findSafeSpawn(seed: number, startPixelX: number, startPixelY: number, mapId: string = 'city'): { x: number, y: number } {
+  // First, check if the exact current bounding box (16x16) is already perfectly safe.
+  // This prevents players from being snapped to the grid and getting stuck in nearby trees
+  // if they log out while moving between tiles.
+  const isSafe = (px: number, py: number) => {
+    const margin = 1;
+    const corners = [
+      {x: px + margin, y: py + margin},
+      {x: px + TILE_SIZE - margin, y: py + margin},
+      {x: px + margin, y: py + TILE_SIZE - margin},
+      {x: px + TILE_SIZE - margin, y: py + TILE_SIZE - margin}
+    ];
+    for (const c of corners) {
+      const tileGx = Math.floor(c.x / TILE_SIZE);
+      const tileGy = Math.floor(c.y / TILE_SIZE);
+      const tile = getGlobalTile(tileGx, tileGy, seed, mapId);
+      if (!isWalkableTileId(tile)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  if (isSafe(startPixelX, startPixelY)) {
+    return { x: startPixelX, y: startPixelY };
+  }
+
   let gx = Math.floor(startPixelX / TILE_SIZE);
   let gy = Math.floor(startPixelY / TILE_SIZE);
   
@@ -1425,10 +1451,19 @@ export function findSafeSpawn(seed: number, startPixelX: number, startPixelY: nu
           
           const tile = getGlobalTile(testGx, testGy, seed, mapId);
           if (isWalkableTileId(tile)) {
-            return {
-              x: testGx * TILE_SIZE,
-              y: testGy * TILE_SIZE
-            };
+            // To avoid 1x1 traps (e.g. single grass tile surrounded by trees), 
+            // ensure there is at least one walkable adjacent tile.
+            const right = isWalkableTileId(getGlobalTile(testGx + 1, testGy, seed, mapId));
+            const down = isWalkableTileId(getGlobalTile(testGx, testGy + 1, seed, mapId));
+            const left = isWalkableTileId(getGlobalTile(testGx - 1, testGy, seed, mapId));
+            const up = isWalkableTileId(getGlobalTile(testGx, testGy - 1, seed, mapId));
+            
+            if (right || down || left || up) {
+              return {
+                x: testGx * TILE_SIZE,
+                y: testGy * TILE_SIZE
+              };
+            }
           }
         }
       }

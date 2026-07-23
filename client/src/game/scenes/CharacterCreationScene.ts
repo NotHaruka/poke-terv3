@@ -191,6 +191,7 @@ export class CharacterCreationScene implements Scene {
 
   private finishCreation(): void {
     localStorage.setItem('poketer_player_profile', JSON.stringify(this.profile));
+    localStorage.removeItem('poketer_player_data'); // Ensure old player save does not overwrite new character
     
     if (this.networkClient) {
       this.networkClient.setProfile(this.profile.name);
@@ -204,6 +205,7 @@ export class CharacterCreationScene implements Scene {
     const sceneManager = game.sceneManager;
     const overworld = new OverworldScene(this.renderer, this.inputManager, this.networkClient, this.audioManager, this.profile);
     sceneManager.replace(overworld);
+    overworld.saveGame(false);
   }
 
   render(): void {

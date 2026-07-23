@@ -32,8 +32,9 @@ export class InteriorManager {
       return cached;
     }
 
-    // Retrieve from registry
-    const def = InteriorRegistry.get(interiorId);
+    // Retrieve from registry (strip prefix if scoped, e.g. route_1:house_001_interior -> house_001_interior)
+    const baseId = interiorId.includes(':') ? interiorId.split(':')[1] : interiorId;
+    const def = InteriorRegistry.get(baseId);
     if (!def) {
       console.warn(`[InteriorManager] Interior ID not found: ${interiorId}`);
       return null;
