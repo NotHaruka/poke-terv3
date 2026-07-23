@@ -93,20 +93,23 @@ export class BattleScene implements Scene {
     if (res.battleId !== this.startPacket.battleId) return;
 
     this.stateMachine.setState(BattleState.ANIMATING_ROUND);
-    this.animManager.playEventSequence(res.events, () => {
-      // Update active snapshots after round
-      if (res.battleOver) {
-        if (res.winner === this.startPacket.opponentName) {
-          this.stateMachine.setState(BattleState.DEFEAT);
-          this.msgBox.setText("You were defeated...", 25);
+    this.animManager.playEventSequence(
+      res.events,
+      { playerMon: this.p1Active, opponentMon: this.p2Active },
+      () => {
+        if (res.battleOver) {
+          if (res.winner === this.startPacket.opponentName) {
+            this.stateMachine.setState(BattleState.DEFEAT);
+            this.msgBox.setText("You were defeated...", 25);
+          } else {
+            this.stateMachine.setState(BattleState.VICTORY);
+            this.msgBox.setText("You won the battle!", 25);
+          }
         } else {
-          this.stateMachine.setState(BattleState.VICTORY);
-          this.msgBox.setText("You won the battle!", 25);
+          this.stateMachine.setState(BattleState.MAIN_MENU);
         }
-      } else {
-        this.stateMachine.setState(BattleState.MAIN_MENU);
       }
-    });
+    );
   };
 
   public update(dt: number): void {
@@ -116,6 +119,15 @@ export class BattleScene implements Scene {
     this.ui.update(dt);
     this.msgBox.update(dt);
     this.animManager.update(dt);
+
+    // Collect keyboard command from InputManager for WASD / Arrow keys
+    let keyInput: string | null = null;
+    if (this.inputManager.justPressed('KeyW') || this.inputManager.justPressed('ArrowUp')) keyInput = 'w';
+    else if (this.inputManager.justPressed('KeyS') || this.inputManager.justPressed('ArrowDown')) keyInput = 's';
+    else if (this.inputManager.justPressed('KeyA') || this.inputManager.justPressed('ArrowLeft')) keyInput = 'a';
+    else if (this.inputManager.justPressed('KeyD') || this.inputManager.justPressed('ArrowRight')) keyInput = 'd';
+    else if (this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space')) keyInput = 'enter';
+    else if (this.inputManager.justPressed('Escape') || this.inputManager.justPressed('Backspace') || this.inputManager.justPressed('KeyB')) keyInput = 'escape';
 
     // INTRO SLIDE ANIMATION STAGE
     if (state === BattleState.INTRO_SLIDE) {
@@ -131,7 +143,7 @@ export class BattleScene implements Scene {
 
     // INTRO TEXT STAGE
     if (state === BattleState.INTRO_TEXT) {
-      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter') || this.msgBox.isComplete()) {
+      if (keyInput) {
         if (this.msgBox.isComplete()) {
           this.stateMachine.setState(BattleState.INTRO_SEND_OUT);
           this.battleRenderer.throwPokeball('opponent');
@@ -154,17 +166,11 @@ export class BattleScene implements Scene {
 
     // MAIN MENU INPUT
     if (state === BattleState.MAIN_MENU) {
-      const p1Name = this.p1Active.nickname || getMonsterSpecies(this.p1Active.speciesId)?.name || 'Monster';
-
-      if (this.inputManager.justPressed('ArrowLeft') || this.inputManager.justPressed('KeyA') ||
-          this.inputManager.justPressed('ArrowRight') || this.inputManager.justPressed('KeyD') ||
-          this.inputManager.justPressed('ArrowUp') || this.inputManager.justPressed('KeyW') ||
-          this.inputManager.justPressed('ArrowDown') || this.inputManager.justPressed('KeyS') ||
-          this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space')) {
-
-        const choice = this.ui.handleMainMenuInput({ key: this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space') ? 'Enter' : 'Arrow' } as any);
+      if (keyInput) {
+        const choice = this.ui.handleMainMenuInput(keyInput);
 
         if (choice === 'FIGHT') {
+          this.activeMoves = getDefaultMovesForSpecies(this.p1Active.speciesId);
           this.stateMachine.setState(BattleState.MOVE_MENU);
         } else if (choice === 'PARTY') {
           this.showPartyModal = true;
@@ -182,28 +188,63 @@ export class BattleScene implements Scene {
 
     // MOVE MENU INPUT
     if (state === BattleState.MOVE_MENU) {
-      if (this.inputManager.justPressed('Escape') || this.inputManager.justPressed('KeyB')) {
-        this.stateMachine.setState(BattleState.MAIN_MENU);
-        return;
+      if (keyInput) {
+        const res = this.ui.handleMoveMenuInput(keyInput, this.activeMoves.length);
+        if (res?.action === 'BACK') {
+          this.stateMachine.setState(BattleState.MAIN_MENU);
+        } else if (res?.action === 'SELECT') {
+          this.networkClient.send({
+            type: 31 /* BattleAction */,
+            battleId: this.startPacket.battleId,
+            action: { kind: 'attack', moveIndex: res.moveIndex }
+          });
+
+          this.stateMachine.setState(BattleState.WAITING_FOR_SERVER);
+          this.msgBox.setText("Waiting for opponent...", 9999);
+        }
       }
+      return;
+    }
 
-      if (this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space')) {
-        const moveIdx = this.ui.getMenuState().moveOptionIndex;
-        this.networkClient.send({
-          type: 31 /* BattleAction */,
-          battleId: this.startPacket.battleId,
-          action: { kind: 'attack', moveIndex: moveIdx }
-        });
+    // PARTY MENU INPUT
+    if (state === BattleState.PARTY_MENU) {
+      if (keyInput) {
+        const res = this.ui.handlePartyMenuInput(keyInput, this.p1Monsters.length);
+        if (res?.action === 'BACK') {
+          this.showPartyModal = false;
+          this.stateMachine.setState(BattleState.MAIN_MENU);
+        } else if (res?.action === 'SELECT') {
+          if (res.slot === this.p1ActiveIndex) {
+            this.msgBox.setText("Monster is already in battle!", 22);
+          } else if (this.p1Monsters[res.slot] && this.p1Monsters[res.slot].currentHp <= 0) {
+            this.msgBox.setText("That monster has fainted!", 22);
+          } else {
+            this.showPartyModal = false;
+            this.networkClient.send({
+              type: 31 /* BattleAction */,
+              battleId: this.startPacket.battleId,
+              action: { kind: 'switch', slot: res.slot }
+            });
 
-        this.stateMachine.setState(BattleState.WAITING_FOR_SERVER);
-        this.msgBox.setText("Waiting for opponent...", 9999);
+            this.stateMachine.setState(BattleState.WAITING_FOR_SERVER);
+            this.msgBox.setText("Waiting for opponent...", 9999);
+          }
+        }
+      }
+      return;
+    }
+
+    // ANIMATING ROUND INPUT
+    if (state === BattleState.ANIMATING_ROUND) {
+      if (keyInput) {
+        this.animManager.handleInput();
       }
       return;
     }
 
     // VICTORY OR DEFEAT
     if (state === BattleState.VICTORY || state === BattleState.DEFEAT) {
-      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
+      if (keyInput === 'enter') {
         this.exitBattle();
       }
       return;
@@ -256,6 +297,8 @@ export class BattleScene implements Scene {
       this.ui.renderMainMenu(ctx, activeMonName, 0, 180, w, 60);
     } else if (state === BattleState.MOVE_MENU) {
       this.ui.renderMoveMenu(ctx, this.activeMoves, 0, 180, w, 60);
+    } else if (this.showPartyModal || state === BattleState.PARTY_MENU) {
+      this.ui.renderPartyMenuModal(ctx, this.p1Monsters, this.p1ActiveIndex);
     } else {
       this.msgBox.render(ctx, 0, 180, w, 60);
     }

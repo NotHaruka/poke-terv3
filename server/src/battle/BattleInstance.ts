@@ -110,7 +110,28 @@ export class BattleInstance {
       };
       
       this.server.send(this.p1, res1);
-      if (this.p2) this.server.send(this.p2, res1);
+      if (this.p2) {
+        const eventsP2: BattleEvent[] = events.map(ev => {
+          if (ev.type === 'damage' || ev.type === 'heal' || ev.type === 'status' || ev.type === 'faint' || ev.type === 'switch') {
+            return {
+              ...ev,
+              target: ev.target === 'player' ? 'opponent' : 'player'
+            } as BattleEvent;
+          } else if (ev.type === 'action') {
+            return {
+              ...ev,
+              source: ev.source === 'player' ? 'opponent' : 'player'
+            } as BattleEvent;
+          }
+          return ev;
+        });
+
+        const res2: BattleResultPacket = {
+          ...res1,
+          events: eventsP2
+        };
+        this.server.send(this.p2, res2);
+      }
 
       if (battleOver) {
         this.server.battleManager.endBattle(this.id, "KO");

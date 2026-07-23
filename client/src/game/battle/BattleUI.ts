@@ -32,18 +32,22 @@ export class BattleUI {
     this.cursor.update(dt);
   }
 
-  public handleMainMenuInput(e: KeyboardEvent): 'FIGHT' | 'BAG' | 'PARTY' | 'RUN' | null {
-    const key = e.key.toLowerCase();
+  public handleMainMenuInput(inputKey: string): 'FIGHT' | 'BAG' | 'PARTY' | 'RUN' | null {
+    const key = inputKey.toLowerCase();
     let idx = this.menuState.mainOptionIndex;
 
-    if (key === 'arrowleft' || key === 'a') {
+    if (key === 'arrowleft' || key === 'a' || key === 'keya') {
       if (idx % 2 === 1) idx -= 1;
-    } else if (key === 'arrowright' || key === 'd') {
+      else idx += 1;
+    } else if (key === 'arrowright' || key === 'd' || key === 'keyd') {
       if (idx % 2 === 0) idx += 1;
-    } else if (key === 'arrowup' || key === 'w') {
+      else idx -= 1;
+    } else if (key === 'arrowup' || key === 'w' || key === 'keyw') {
       if (idx >= 2) idx -= 2;
-    } else if (key === 'arrowdown' || key === 's') {
+      else idx += 2;
+    } else if (key === 'arrowdown' || key === 's' || key === 'keys') {
       if (idx < 2) idx += 2;
+      else idx -= 2;
     }
 
     if (idx !== this.menuState.mainOptionIndex) {
@@ -51,7 +55,7 @@ export class BattleUI {
       if (this.audioManager) this.audioManager.playSound('select');
     }
 
-    if (key === 'enter' || key === ' ') {
+    if (key === 'enter' || key === 'space' || key === ' ') {
       if (this.audioManager) this.audioManager.playSound('select');
       switch (this.menuState.mainOptionIndex) {
         case 0: return 'FIGHT';
@@ -64,23 +68,27 @@ export class BattleUI {
     return null;
   }
 
-  public handleMoveMenuInput(e: KeyboardEvent, moveCount: number): { action: 'SELECT' | 'BACK'; moveIndex: number } | null {
-    const key = e.key.toLowerCase();
+  public handleMoveMenuInput(inputKey: string, moveCount: number): { action: 'SELECT' | 'BACK'; moveIndex: number } | null {
+    const key = inputKey.toLowerCase();
     let idx = this.menuState.moveOptionIndex;
 
-    if (key === 'escape' || key === 'b' || key === 'backspace') {
+    if (key === 'escape' || key === 'b' || key === 'keyb' || key === 'backspace') {
       if (this.audioManager) this.audioManager.playSound('cancel');
       return { action: 'BACK', moveIndex: 0 };
     }
 
-    if (key === 'arrowleft' || key === 'a') {
+    if (key === 'arrowleft' || key === 'a' || key === 'keya') {
       if (idx % 2 === 1) idx -= 1;
-    } else if (key === 'arrowright' || key === 'd') {
+      else if (idx + 1 < moveCount) idx += 1;
+    } else if (key === 'arrowright' || key === 'd' || key === 'keyd') {
       if (idx % 2 === 0 && idx + 1 < moveCount) idx += 1;
-    } else if (key === 'arrowup' || key === 'w') {
+      else if (idx % 2 === 1) idx -= 1;
+    } else if (key === 'arrowup' || key === 'w' || key === 'keyw') {
       if (idx >= 2) idx -= 2;
-    } else if (key === 'arrowdown' || key === 's') {
+      else if (idx + 2 < moveCount) idx += 2;
+    } else if (key === 'arrowdown' || key === 's' || key === 'keys') {
       if (idx + 2 < moveCount) idx += 2;
+      else if (idx >= 2) idx -= 2;
     }
 
     if (idx !== this.menuState.moveOptionIndex) {
@@ -88,9 +96,37 @@ export class BattleUI {
       if (this.audioManager) this.audioManager.playSound('select');
     }
 
-    if (key === 'enter' || key === ' ') {
+    if (key === 'enter' || key === 'space' || key === ' ') {
       if (this.audioManager) this.audioManager.playSound('select');
       return { action: 'SELECT', moveIndex: this.menuState.moveOptionIndex };
+    }
+
+    return null;
+  }
+
+  public handlePartyMenuInput(inputKey: string, partyCount: number): { action: 'SELECT' | 'BACK'; slot: number } | null {
+    const key = inputKey.toLowerCase();
+    let idx = this.menuState.partyOptionIndex;
+
+    if (key === 'escape' || key === 'b' || key === 'keyb' || key === 'backspace') {
+      if (this.audioManager) this.audioManager.playSound('cancel');
+      return { action: 'BACK', slot: 0 };
+    }
+
+    if (key === 'arrowup' || key === 'w' || key === 'keyw' || key === 'arrowleft' || key === 'a' || key === 'keya') {
+      idx = (idx - 1 + partyCount) % Math.max(1, partyCount);
+    } else if (key === 'arrowdown' || key === 's' || key === 'keys' || key === 'arrowright' || key === 'd' || key === 'keyd') {
+      idx = (idx + 1) % Math.max(1, partyCount);
+    }
+
+    if (idx !== this.menuState.partyOptionIndex) {
+      this.menuState.partyOptionIndex = idx;
+      if (this.audioManager) this.audioManager.playSound('select');
+    }
+
+    if (key === 'enter' || key === 'space' || key === ' ') {
+      if (this.audioManager) this.audioManager.playSound('select');
+      return { action: 'SELECT', slot: this.menuState.partyOptionIndex };
     }
 
     return null;
@@ -236,10 +272,8 @@ export class BattleUI {
 
   public renderPartyMenuModal(
     ctx: CanvasRenderingContext2D,
-    party: MonsterInstance[],
-    activeIndex: number,
-    onSelect: (slot: number) => void,
-    onCancel: () => void
+    party: MonsterSnapshot[] | MonsterInstance[],
+    activeIndex: number
   ): void {
     ctx.save();
 
