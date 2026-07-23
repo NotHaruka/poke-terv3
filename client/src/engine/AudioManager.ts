@@ -29,7 +29,9 @@ export class AudioManager {
         this.ctx.resume().catch(() => {});
       }
 
-      const trackToPlay = this.pendingMusicUrl || this.currentTrackUrl || '/sunlit_safari.mp3';
+      const musicManager = MusicManager.getInstance();
+      const correctTrack = musicManager ? musicManager.getCorrectTrackForEnvironment() : null;
+      const trackToPlay = correctTrack || this.pendingMusicUrl || this.currentTrackUrl || '/sunlit_safari.mp3';
       this.pendingMusicUrl = null;
       this.playMusic(trackToPlay);
 
@@ -80,8 +82,10 @@ export class AudioManager {
       return;
     }
 
-    if (this.currentAudio && this.currentTrackUrl === url && !this.currentAudio.paused) {
-      // Already playing this exact song!
+    if (this.currentAudio && this.currentTrackUrl === url) {
+      if (this.currentAudio.paused && this.userInteracted) {
+        this.currentAudio.play().catch(() => {});
+      }
       return;
     }
 

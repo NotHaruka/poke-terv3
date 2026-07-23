@@ -41,6 +41,13 @@ export enum PacketType {
   // Chat
   ChatMessage = 50,
 
+  // Trading
+  TradeRequest = 70,
+  TradeResponse = 71,
+  TradeOfferUpdate = 72,
+  TradeConfirm = 73,
+  TradeComplete = 74,
+
   // System
   Ping = 60,
   Pong = 61,
@@ -312,6 +319,39 @@ export interface MapChangeResponsePacket extends Packet {
   players: PlayerSnapshot[];
 }
 
+export interface TradeRequestPacket extends Packet {
+  type: PacketType.TradeRequest;
+  targetPlayerId: string;
+  senderName: string;
+}
+
+export interface TradeResponsePacket extends Packet {
+  type: PacketType.TradeResponse;
+  senderId: string;
+  senderName: string;
+  accept: boolean;
+}
+
+export interface TradeOfferUpdatePacket extends Packet {
+  type: PacketType.TradeOfferUpdate;
+  tradeId: string;
+  offeredSlot: number;
+  offeredMonsterSnapshot?: MonsterSnapshot;
+}
+
+export interface TradeConfirmPacket extends Packet {
+  type: PacketType.TradeConfirm;
+  tradeId: string;
+  confirmed: boolean;
+}
+
+export interface TradeCompletePacket extends Packet {
+  type: PacketType.TradeComplete;
+  tradeId: string;
+  success: boolean;
+  receivedMonster?: MonsterSnapshot;
+}
+
 export type AnyPacket =
   | HelloPacket | WelcomePacket | DisconnectPacket
   | PlayerJoinPacket | PlayerLeavePacket | PlayerInputPacket
@@ -324,4 +364,5 @@ export type AnyPacket =
   | ChatMessagePacket
   | PingPacket | PongPacket | ErrorPacket
   | SaveRequestPacket | SaveResponsePacket
-  | MapChangeRequestPacket | MapChangeResponsePacket;
+  | MapChangeRequestPacket | MapChangeResponsePacket
+  | TradeRequestPacket | TradeResponsePacket | TradeOfferUpdatePacket | TradeConfirmPacket | TradeCompletePacket;

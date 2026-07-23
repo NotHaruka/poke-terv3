@@ -204,6 +204,7 @@ export class BattleManager {
   endBattle(battleId: string, reason: string) {
     const battle = this.battles.get(battleId);
     if (battle) {
+      battle.clearTurnTimer();
       // Clean up states
       this.battles.delete(battleId);
     }

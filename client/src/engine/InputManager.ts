@@ -12,6 +12,38 @@ export class InputManager {
   private _justReleased: Set<string> = new Set();
   private prevKeys: Set<string> = new Set();
   private attachedElement: HTMLElement | null = null;
+  private touchActive = false;
+
+  constructor() {
+    window.addEventListener('touchstart', this.onTouchStartDetect, { passive: true });
+  }
+
+  private onTouchStartDetect = (): void => {
+    this.touchActive = true;
+    window.removeEventListener('touchstart', this.onTouchStartDetect);
+    window.dispatchEvent(new CustomEvent('touch-detected'));
+  };
+
+  isTouchActive(): boolean {
+    return this.touchActive;
+  }
+
+  setTouchActive(active: boolean): void {
+    this.touchActive = active;
+    window.dispatchEvent(new CustomEvent('touch-changed', { detail: { active } }));
+  }
+
+  simulateKeyDown(code: string): void {
+    if (!this.keys.has(code)) {
+      this._justPressed.add(code);
+    }
+    this.keys.add(code);
+  }
+
+  simulateKeyUp(code: string): void {
+    this.keys.delete(code);
+    this._justReleased.add(code);
+  }
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (!this.keys.has(e.code)) {

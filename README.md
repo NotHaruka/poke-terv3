@@ -76,4 +76,53 @@ Launches the full-stack server serving the production client assets.
 npm run start
 ```
 
+---
+
+## Android Export & Mobile Porting Guide (Capacitor)
+
+Since Poke-ter's frontend client is a compiled static web app (`dist/client/`), you can easily wrap it into a high-performance native Android application using **Capacitor**. This completes **Milestone 5**.
+
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) installed
+- [Android Studio](https://developer.android.com/studio) installed on your system (with Android SDK)
+
+### 2. Setup Capacitor in the Client Directory
+Navigate to your `client/` directory and install the Capacitor CLI and Core dependencies:
+```bash
+cd client
+npm install @capacitor/core @capacitor/cli
+```
+
+### 3. Initialize Capacitor
+Initialize Capacitor with your app name and bundle ID. Ensure the web asset directory is set to `dist/client`:
+```bash
+npx cap init "Poke-ter" "com.poketer.app" --web-dir=../dist/client
+```
+
+### 4. Add the Android Platform
+Install the Capacitor Android library and add the platform:
+```bash
+npm install @capacitor/android
+npx cap add android
+```
+
+### 5. Build and Sync
+Whenever you build your frontend game client, sync the compiled assets into your Android project:
+```bash
+# Compile client assets from root directory
+npm run build
+
+# Sync assets to Android project
+cd client
+npx cap sync
+```
+
+### 6. Run on Device / Emulator
+Open the project in Android Studio to compile and build the `.apk`:
+```bash
+npx cap open android
+```
+Inside Android Studio, select your emulator or connected physical Android device and click **Run** (Green play button) to launch the game with full virtual joystick support!
+
+
 

@@ -40,12 +40,21 @@ export class Renderer {
     const maxW = parent.clientWidth || window.innerWidth;
     const maxH = parent.clientHeight || window.innerHeight;
 
-    const scaleX = Math.floor(maxW / GAME_WIDTH);
-    const scaleY = Math.floor(maxH / GAME_HEIGHT);
-    this._scale = Math.max(1, Math.min(scaleX, scaleY));
+    const aspect = GAME_WIDTH / GAME_HEIGHT;
+    let width = maxW;
+    let height = maxW / aspect;
+    if (height > maxH) {
+      height = maxH;
+      width = maxH * aspect;
+    }
 
-    this.canvas.width = GAME_WIDTH * this._scale;
-    this.canvas.height = GAME_HEIGHT * this._scale;
+    const dpr = window.devicePixelRatio || 1;
+    this._scale = width / GAME_WIDTH;
+
+    this.canvas.width = width * dpr;
+    this.canvas.height = height * dpr;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
 
     this.ctx.imageSmoothingEnabled = false;
   };

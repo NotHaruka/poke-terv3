@@ -22,6 +22,8 @@ export class BattleInstance {
   p1ActiveIndex: number = 0;
   p2ActiveIndex: number = 0;
 
+  turnTimer: NodeJS.Timeout | null = null;
+
   constructor(id: string, server: GameState, p1: ClientState, p2?: ClientState) {
     this.id = id;
     this.server = server;
@@ -50,6 +52,71 @@ export class BattleInstance {
     if (this.p2 && this.p2.playerData) {
       this.p2ActiveIndex = this.getFirstAlive(this.p2.playerData.party);
     }
+
+    this.startTurnTimer();
+  }
+
+  startTurnTimer() {
+    if (!this.isPvP) return;
+    this.clearTurnTimer();
+    this.turnTimer = setTimeout(() => {
+      this.handleTurnTimeout();
+    }, 45000); // 45 seconds turn timer
+  }
+
+  clearTurnTimer() {
+    if (this.turnTimer) {
+      clearTimeout(this.turnTimer);
+      this.turnTimer = null;
+    }
+  }
+
+  handleTurnTimeout() {
+    this.clearTurnTimer();
+    
+    let winner: ClientState | undefined;
+    // Determine winner based on who did NOT submit their action
+    if (!this.p1Action && this.p2Action) {
+      winner = this.p2;
+    } else if (this.p1Action && !this.p2Action) {
+      winner = this.p1;
+    } else {
+      // Both or neither, default to p2 (or p1 as a backup)
+      winner = this.p2 || this.p1;
+    }
+
+    const winnerName = winner ? winner.username : "No one";
+    const events: BattleEvent[] = [
+      { type: 'message', text: `Time expired! ${winnerName} wins the battle by default.` }
+    ];
+
+    const res1: BattleResultPacket = {
+      type: PacketType.BattleResult,
+      battleId: this.id,
+      events,
+      turnReady: false,
+      battleOver: true,
+      winner: winnerName
+    };
+
+    this.server.send(this.p1, res1);
+    if (this.p2) {
+      const eventsP2: BattleEvent[] = events.map(ev => {
+        if (ev.type === 'damage' || ev.type === 'heal' || ev.type === 'status' || ev.type === 'faint' || ev.type === 'switch') {
+          return { ...ev, target: ev.target === 'player' ? 'opponent' : 'player' } as BattleEvent;
+        } else if (ev.type === 'action') {
+          return { ...ev, source: ev.source === 'player' ? 'opponent' : 'player' } as BattleEvent;
+        }
+        return ev;
+      });
+
+      this.server.send(this.p2, {
+        ...res1,
+        events: eventsP2
+      });
+    }
+
+    this.server.battleManager.endBattle(this.id, "TIMEOUT");
   }
 
   getFirstAlive(party: MonsterInstance[]): number {
@@ -92,6 +159,8 @@ export class BattleInstance {
     const events: BattleEvent[] = [];
 
     const finishRound = () => {
+      this.clearTurnTimer();
+
       this.p1Action = undefined;
       this.p2Action = undefined;
 
@@ -135,6 +204,8 @@ export class BattleInstance {
 
       if (battleOver) {
         this.server.battleManager.endBattle(this.id, "KO");
+      } else {
+        this.startTurnTimer();
       }
     };
 

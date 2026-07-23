@@ -29,6 +29,15 @@ export function handlePacket(gameState: GameState, client: ClientState, packet: 
     case PacketType.SaveRequest:
       handleSaveRequest(gameState, client, packet as SaveRequestPacket);
       break;
+    case PacketType.ChatMessage:
+      gameState.broadcastToMap(client.mapInstanceId, packet);
+      break;
+    case PacketType.TradeRequest:
+    case PacketType.TradeResponse:
+    case PacketType.TradeOfferUpdate:
+    case PacketType.TradeConfirm:
+      gameState.tradeManager.handlePacket(client, packet);
+      break;
     case PacketType.BattleChallengeRequest:
     case PacketType.BattleChallengeAnswer:
     case PacketType.BattleAction:

@@ -54,7 +54,7 @@ import { FollowerMonster } from '../entities/FollowerMonster.js';
 import { OverworldCombatManager } from '../combat/OverworldCombatManager.js';
 import { StarterSelectModal } from '../ui/menus/StarterSelectModal.js';
 import { SupplyMartMenu } from '../ui/menus/SupplyMartMenu.js';
-import { MONSTER_SPECIES, calculateStats, getMonsterSpecies } from 'poke-ter-shared';
+import { MONSTER_SPECIES, calculateStats, getMonsterSpecies, getDefaultMovesForSpecies } from 'poke-ter-shared';
 import { TitleScreenScene } from './TitleScreenScene.js';
 
 // QoL HUD imports
@@ -138,6 +138,28 @@ export class OverworldScene implements Scene {
   private pendingIncomingBattleRequest: { challengerId: string; challengerName: string } | null = null;
   private acceptBtnBounds = { x: 0, y: 0, w: 0, h: 0 };
   private declineBtnBounds = { x: 0, y: 0, w: 0, h: 0 };
+
+  // Chat & Trading state
+  private chatBubbles: Map<string, { text: string; timer: number }> = new Map();
+  private isChatInputActive: boolean = false;
+  private chatInputValue: string = '';
+
+  private activeTradeId: string | null = null;
+  private tradeOpponentId: string | null = null;
+  private tradeOpponentName: string = '';
+  private tradeMyOfferSlot: number = -1;
+  private tradeOpponentOfferSlot: number = -1;
+  private tradeOpponentOfferMonster: import('poke-ter-shared').MonsterSnapshot | null = null;
+  private tradeMyConfirmed: boolean = false;
+  private tradeOpponentConfirmed: boolean = false;
+  private tradeSelectedSlotIndex: number = 0;
+
+  private pendingIncomingTradeRequest: { senderId: string; senderName: string } | null = null;
+  private pendingOutgoingTradeRequest: { targetId: string; targetName: string } | null = null;
+  private acceptTradeBtnBounds = { x: 0, y: 0, w: 0, h: 0 };
+  private declineTradeBtnBounds = { x: 0, y: 0, w: 0, h: 0 };
+
+  private selectedPlayerForInteraction: PlayerSnapshot | null = null;
 
   constructor(
     renderer: Renderer,
@@ -270,6 +292,77 @@ export class OverworldScene implements Scene {
       this.networkClient.on(PacketType.PlayerLeave, this.onPlayerLeave);
       this.networkClient.on(PacketType.PlayerMove, this.onPlayerMove);
       this.networkClient.on(PacketType.PlayerPos, this.onPlayerPos);
+
+      this.networkClient.on(PacketType.ChatMessage, (p: any) => {
+        this.chatBubbles.set(p.playerId, { text: p.message, timer: 4.0 });
+        if (this.audioManager) this.audioManager.playSFX('select');
+      });
+
+      this.networkClient.on(PacketType.TradeRequest, (p: any) => {
+        this.pendingIncomingTradeRequest = { senderId: p.targetPlayerId, senderName: p.senderName };
+        if (this.audioManager) this.audioManager.playSFX('open');
+      });
+
+      this.networkClient.on(PacketType.TradeResponse, (p: any) => {
+        if (p.accept) {
+          this.pendingIncomingTradeRequest = null;
+          this.pendingOutgoingTradeRequest = null;
+          this.activeTradeId = p.tradeId || `trade_${p.senderId}`;
+          this.tradeOpponentId = p.senderId;
+          this.tradeOpponentName = p.senderName;
+          this.tradeMyOfferSlot = -1;
+          this.tradeOpponentOfferSlot = -1;
+          this.tradeOpponentOfferMonster = null;
+          this.tradeMyConfirmed = false;
+          this.tradeOpponentConfirmed = false;
+          this.tradeSelectedSlotIndex = 0;
+          this.player.state = PlayerState.Battling; // Freeze movement
+          if (this.audioManager) this.audioManager.playSFX('open');
+        } else {
+          this.pendingOutgoingTradeRequest = null;
+          this.controlsHUD.showToast(`${p.senderName} declined the trade.`, '❌', 3.0);
+        }
+      });
+
+      this.networkClient.on(PacketType.TradeOfferUpdate, (p: any) => {
+        this.tradeOpponentOfferSlot = p.offeredSlot;
+        this.tradeOpponentOfferMonster = p.offeredMonsterSnapshot || null;
+        this.tradeMyConfirmed = false;
+        this.tradeOpponentConfirmed = false;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      });
+
+      this.networkClient.on(PacketType.TradeConfirm, (p: any) => {
+        this.tradeOpponentConfirmed = p.confirmed;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      });
+
+      this.networkClient.on(PacketType.TradeComplete, (p: any) => {
+        this.player.state = PlayerState.Walking; // Unfreeze
+        this.activeTradeId = null;
+
+        if (p.success && p.receivedMonster) {
+          if (this.tradeMyOfferSlot >= 0 && this.tradeMyOfferSlot < this.player.party.length) {
+            const rec = p.receivedMonster;
+            const fullMon: import('poke-ter-shared').MonsterInstance = {
+              speciesId: rec.speciesId,
+              level: rec.level,
+              currentHp: rec.currentHp,
+              maxHp: rec.maxHp,
+              stats: rec.stats,
+              status: rec.status,
+              nickname: rec.nickname,
+              moves: getDefaultMovesForSpecies(rec.speciesId)
+            };
+            this.player.party[this.tradeMyOfferSlot] = fullMon;
+          }
+          this.controlsHUD.showToast(`Trade completed! Received ${p.receivedMonster.nickname || getMonsterSpecies(p.receivedMonster.speciesId)?.name || 'Monster'}!`, '🤝', 5.0);
+          if (this.audioManager) this.audioManager.playSFX('heal');
+        } else {
+          this.controlsHUD.showToast('Trade canceled or failed.', '❌', 3.0);
+          if (this.audioManager) this.audioManager.playSFX('select');
+        }
+      });
     }
 
     this.attachCanvasClickListener();
@@ -284,6 +377,169 @@ export class OverworldScene implements Scene {
       const scale = this.renderer.getScale();
       const clickX = (e.clientX - rect.left) / scale;
       const clickY = (e.clientY - rect.top) / scale;
+
+      // Check Trade Screen Clicks
+      if (this.activeTradeId) {
+        const boxW = 300;
+        const boxH = 180;
+        const boxX = (GAME_WIDTH - boxW) / 2;
+        const boxY = (GAME_HEIGHT - boxH) / 2;
+        const p1X = boxX + 10;
+        const p1Y = boxY + 28;
+        const pW = 135;
+
+        // 1. Party Slots
+        for (let i = 0; i < 6; i++) {
+          const slotY = p1Y + 20 + i * 15;
+          if (
+            clickX >= p1X + 4 && clickX <= p1X + pW - 4 &&
+            clickY >= slotY && clickY <= slotY + 12
+          ) {
+            this.tradeSelectedSlotIndex = i;
+            const mon = this.player.party[i];
+            if (mon) {
+              this.tradeMyOfferSlot = i;
+              this.tradeMyConfirmed = false;
+              this.tradeOpponentConfirmed = false;
+              const snap: import('poke-ter-shared').MonsterSnapshot = {
+                speciesId: mon.speciesId,
+                level: mon.level,
+                currentHp: mon.currentHp,
+                maxHp: mon.maxHp,
+                stats: mon.stats,
+                status: mon.status,
+                nickname: mon.nickname
+              };
+              if (this.networkClient) {
+                this.networkClient.send({
+                  type: PacketType.TradeOfferUpdate,
+                  tradeId: this.activeTradeId,
+                  offeredSlot: this.tradeMyOfferSlot,
+                  offeredMonsterSnapshot: snap
+                });
+              }
+              if (this.audioManager) this.audioManager.playSFX('select');
+            }
+            return;
+          }
+        }
+
+        // 2. Ready Button
+        const btnW = 100;
+        const btnH = 16;
+        const btnX = boxX + (boxW - btnW) / 2;
+        const btnY = boxY + boxH - 44;
+        if (
+          clickX >= btnX && clickX <= btnX + btnW &&
+          clickY >= btnY && clickY <= btnY + btnH
+        ) {
+          if (this.tradeMyOfferSlot === -1) {
+            this.controlsHUD.showToast('Please offer a monster first!', '⚠️');
+          } else {
+            this.tradeMyConfirmed = !this.tradeMyConfirmed;
+            if (this.networkClient) {
+              this.networkClient.send({
+                type: PacketType.TradeConfirm,
+                tradeId: this.activeTradeId,
+                confirmed: this.tradeMyConfirmed
+              });
+            }
+            if (this.audioManager) this.audioManager.playSFX('select');
+          }
+          return;
+        }
+
+        // 3. Cancel Button
+        const closeBtnW = 60;
+        const closeBtnH = 12;
+        const closeBtnX = boxX + boxW - closeBtnW - 10;
+        const closeBtnY = boxY + boxH - 20;
+        if (
+          clickX >= closeBtnX && clickX <= closeBtnX + closeBtnW &&
+          clickY >= closeBtnY && clickY <= closeBtnY + closeBtnH
+        ) {
+          if (this.networkClient) {
+            this.networkClient.send({
+              type: PacketType.TradeComplete,
+              tradeId: this.activeTradeId,
+              success: false
+            });
+          }
+          this.activeTradeId = null;
+          this.player.state = PlayerState.Walking;
+          if (this.audioManager) this.audioManager.playSFX('select');
+          return;
+        }
+        return;
+      }
+
+      // Check Player Interaction Menu Clicks
+      if (this.selectedPlayerForInteraction) {
+        const boxW = 160;
+        const boxH = 64;
+        const boxX = (GAME_WIDTH - boxW) / 2;
+        const boxY = (GAME_HEIGHT - boxH) / 2;
+        const battleY = boxY + 20;
+        const tradeY = boxY + 38;
+
+        if (clickX >= boxX + 10 && clickX <= boxX + 150) {
+          if (clickY >= battleY && clickY <= battleY + 14) {
+            this.sendBattleChallenge(this.selectedPlayerForInteraction);
+            this.selectedPlayerForInteraction = null;
+            if (this.audioManager) this.audioManager.playSFX('select');
+            return;
+          } else if (clickY >= tradeY && clickY <= tradeY + 14) {
+            this.sendTradeRequest(this.selectedPlayerForInteraction);
+            this.selectedPlayerForInteraction = null;
+            if (this.audioManager) this.audioManager.playSFX('select');
+            return;
+          }
+        }
+        this.selectedPlayerForInteraction = null;
+        if (this.audioManager) this.audioManager.playSFX('select');
+        return;
+      }
+
+      // Check incoming trade accept/decline bounds
+      if (this.pendingIncomingTradeRequest) {
+        if (
+          clickX >= this.acceptTradeBtnBounds.x &&
+          clickX <= this.acceptTradeBtnBounds.x + this.acceptTradeBtnBounds.w &&
+          clickY >= this.acceptTradeBtnBounds.y &&
+          clickY <= this.acceptTradeBtnBounds.y + this.acceptTradeBtnBounds.h
+        ) {
+          this.acceptIncomingTradeRequest();
+          return;
+        }
+        if (
+          clickX >= this.declineTradeBtnBounds.x &&
+          clickX <= this.declineTradeBtnBounds.x + this.declineTradeBtnBounds.w &&
+          clickY >= this.declineTradeBtnBounds.y &&
+          clickY <= this.declineTradeBtnBounds.y + this.declineTradeBtnBounds.h
+        ) {
+          this.declineIncomingTradeRequest();
+          return;
+        }
+      }
+
+      // Click on another player to interact
+      const cameraX = this.camera.x;
+      const cameraY = this.camera.y;
+      const offsetX = cameraX - GAME_WIDTH / 2;
+      const offsetY = cameraY - GAME_HEIGHT / 2;
+
+      for (const [opId, op] of this.otherPlayers) {
+        const opScreenX = op.position.x - offsetX;
+        const opScreenY = op.position.y - offsetY;
+        if (
+          clickX >= opScreenX - 8 && clickX <= opScreenX + 24 &&
+          clickY >= opScreenY - 8 && clickY <= opScreenY + 24
+        ) {
+          this.selectedPlayerForInteraction = op;
+          if (this.audioManager) this.audioManager.playSFX('select');
+          return;
+        }
+      }
 
       // 1. Check Battle Request overlay clicks
       if (this.pendingIncomingBattleRequest) {
@@ -622,6 +878,12 @@ export class OverworldScene implements Scene {
   }
 
   init(): void {
+    const isOffline = !this.networkClient || !this.networkClient.isConnected();
+    if (isOffline) {
+      console.log('[OverworldScene] Running in offline sandbox mode...');
+      this.chunkManager.setSeed(1337);
+    }
+
     if (!this.player.hasStarter) {
       // Spawn player directly inside Professor's Research Lab in front of the 3 Starter Pods
       this.doorSystem.enterBuilding('lab_interior', 'city', 117, 113);
@@ -634,6 +896,14 @@ export class OverworldScene implements Scene {
       this.setMap(this.currentMapId);
       this.controlsHUD.showToast('Welcome back to Poke-ter!', '✨', 3.0);
     }
+
+    if (isOffline) {
+      setTimeout(() => {
+        this.controlsHUD.showToast('Playing in Offline Sandbox Mode 📴', '🎮', 4.0);
+      }, 1500);
+    }
+
+    this.updateBackgroundMusic();
   }
 
   
@@ -723,6 +993,104 @@ private getNPCInFront(): NPCDefinition | null {
   }
 
   update(dt: number): void {
+    // Tick down chat bubble timers
+    for (const [id, bubble] of this.chatBubbles.entries()) {
+      bubble.timer -= dt / 1000;
+      if (bubble.timer <= 0) {
+        this.chatBubbles.delete(id);
+      }
+    }
+
+    // Trade updates
+    if (this.activeTradeId) {
+      if (this.inputManager.justPressed('KeyW') || this.inputManager.justPressed('ArrowUp')) {
+        this.tradeSelectedSlotIndex = (this.tradeSelectedSlotIndex - 1 + 6) % 6;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      } else if (this.inputManager.justPressed('KeyS') || this.inputManager.justPressed('ArrowDown')) {
+        this.tradeSelectedSlotIndex = (this.tradeSelectedSlotIndex + 1) % 6;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      }
+
+      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
+        const mon = this.player.party[this.tradeSelectedSlotIndex];
+        if (mon) {
+          this.tradeMyOfferSlot = this.tradeSelectedSlotIndex;
+          this.tradeMyConfirmed = false;
+          this.tradeOpponentConfirmed = false;
+          
+          const snap: import('poke-ter-shared').MonsterSnapshot = {
+            speciesId: mon.speciesId,
+            level: mon.level,
+            currentHp: mon.currentHp,
+            maxHp: mon.maxHp,
+            stats: mon.stats,
+            status: mon.status,
+            nickname: mon.nickname
+          };
+
+          if (this.networkClient) {
+            this.networkClient.send({
+              type: PacketType.TradeOfferUpdate,
+              tradeId: this.activeTradeId,
+              offeredSlot: this.tradeMyOfferSlot,
+              offeredMonsterSnapshot: snap
+            });
+          }
+          if (this.audioManager) this.audioManager.playSFX('select');
+        } else {
+          this.controlsHUD.showToast('No monster in this slot.', '⚠️');
+        }
+      }
+
+      if (this.inputManager.justPressed('KeyC')) {
+        if (this.tradeMyOfferSlot === -1) {
+          this.controlsHUD.showToast('Please offer a monster first!', '⚠️');
+        } else {
+          this.tradeMyConfirmed = !this.tradeMyConfirmed;
+          if (this.networkClient) {
+            this.networkClient.send({
+              type: PacketType.TradeConfirm,
+              tradeId: this.activeTradeId,
+              confirmed: this.tradeMyConfirmed
+            });
+          }
+          if (this.audioManager) this.audioManager.playSFX('select');
+        }
+      }
+
+      if (this.inputManager.justPressed('Escape')) {
+        if (this.networkClient) {
+          this.networkClient.send({
+            type: PacketType.TradeComplete,
+            tradeId: this.activeTradeId,
+            success: false
+          });
+        }
+        this.activeTradeId = null;
+        this.player.state = PlayerState.Walking;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      }
+
+      this.inputManager.update();
+      return;
+    }
+
+    // Interaction menu key binds
+    if (this.selectedPlayerForInteraction) {
+      if (this.inputManager.justPressed('Digit1') || this.inputManager.justPressed('Numpad1')) {
+        this.sendBattleChallenge(this.selectedPlayerForInteraction);
+        this.selectedPlayerForInteraction = null;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      } else if (this.inputManager.justPressed('Digit2') || this.inputManager.justPressed('Numpad2')) {
+        this.sendTradeRequest(this.selectedPlayerForInteraction);
+        this.selectedPlayerForInteraction = null;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      } else if (this.inputManager.justPressed('Escape')) {
+        this.selectedPlayerForInteraction = null;
+        if (this.audioManager) this.audioManager.playSFX('select');
+      }
+    }
+
     this.totalAnimTime += dt;
     this.playTimeMs += dt;
     this.clockManager.update(dt);
@@ -731,7 +1099,7 @@ private getNPCInFront(): NPCDefinition | null {
     this.minimapHUD.update(dt);
     
     this.musicUpdateTimer += dt;
-    if (this.musicUpdateTimer >= 500) {
+    if (this.musicUpdateTimer >= 1.0) {
       this.musicUpdateTimer = 0;
       this.updateBackgroundMusic();
     }
@@ -884,6 +1252,20 @@ private getNPCInFront(): NPCDefinition | null {
     // Keybind shortcut: H key toggles Control HUD
     if (this.inputManager.justPressed('KeyH')) {
       this.controlsHUD.toggleVisibility();
+    }
+
+    // Keybind shortcut: Enter or KeyC opens chat input modal
+    if ((this.inputManager.justPressed('Enter') || this.inputManager.justPressed('KeyC')) && !this.isDialogueActive && !this.menuManager.isOpen() && !this.isChatInputActive && !this.activeTradeId && !this.selectedPlayerForInteraction) {
+      this.openChatInput();
+    }
+
+    // Keybind shortcut for incoming trades
+    if (this.pendingIncomingTradeRequest) {
+      if (this.inputManager.justPressed('KeyY')) {
+        this.acceptIncomingTradeRequest();
+      } else if (this.inputManager.justPressed('KeyN') || this.inputManager.justPressed('Escape')) {
+        this.declineIncomingTradeRequest();
+      }
     }
 
     envSystem.update(dt);
@@ -1077,7 +1459,7 @@ private getNPCInFront(): NPCDefinition | null {
 
     if (this.networkClient && this.networkClient.isConnected()) {
       let keysRecord = this.inputManager.getKeysRecord();
-      if (this.menuManager.isOpen() || this.isDialogueActive || this.transitionManager.isTransitioning()) {
+      if (this.menuManager.isOpen() || this.isDialogueActive || this.transitionManager.isTransitioning() || this.isChatInputActive || this.activeTradeId) {
         keysRecord = {};
       }
       this.networkClient.sendInput(keysRecord, this.player.direction, { x: this.player.x, y: this.player.y });
@@ -1449,6 +1831,42 @@ private getNPCInFront(): NPCDefinition | null {
     // Render Transition Screen Fade Overlay
     this.transitionManager.render(ctx);
 
+    // Render trade overlays
+    if (this.activeTradeId) {
+      this.renderTradeScreen(ctx);
+    }
+    
+    // Render trade requests overlay
+    if (this.pendingIncomingTradeRequest) {
+      this.renderTradeRequestOverlay(ctx);
+    }
+
+    // Render interaction selection modal
+    if (this.selectedPlayerForInteraction) {
+      this.renderPlayerInteractionMenu(ctx);
+    }
+
+    // Render chat input bar
+    if (this.isChatInputActive) {
+      this.renderChatInputBar(ctx);
+    }
+
+    // Render Chat Bubbles
+    for (const [id, bubble] of this.chatBubbles.entries()) {
+      if (id === this.networkClient?.getId()) {
+        const sx = Math.round(this.player.x - offsetX);
+        const sy = Math.round(this.player.y - offsetY);
+        this.renderChatBubble(ctx, bubble.text, sx, sy);
+      } else {
+        const op = this.otherPlayers.get(id);
+        if (op) {
+          const sx = Math.round(op.position.x - offsetX);
+          const sy = Math.round(op.position.y - offsetY);
+          this.renderChatBubble(ctx, bubble.text, sx, sy);
+        }
+      }
+    }
+
     if (this.debugMode) {
       this.renderDebug(ctx);
     }
@@ -1598,6 +2016,421 @@ private getNPCInFront(): NPCDefinition | null {
 
       ctx.restore();
     }
+  }
+
+  private openChatInput(): void {
+    this.isChatInputActive = true;
+    this.chatInputValue = '';
+    this.player.state = PlayerState.Battling; // Freeze movement
+    window.addEventListener('keydown', this.chatKeydownListener);
+  }
+
+  private closeChatInput(): void {
+    this.isChatInputActive = false;
+    this.player.state = PlayerState.Walking; // Unfreeze
+    window.removeEventListener('keydown', this.chatKeydownListener);
+  }
+
+  private chatKeydownListener = (e: KeyboardEvent) => {
+    if (!this.isChatInputActive) return;
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const msg = this.chatInputValue.trim();
+      if (msg.length > 0 && this.networkClient) {
+        this.networkClient.send({
+          type: PacketType.ChatMessage,
+          message: msg,
+          playerId: this.networkClient.getId(),
+          username: this.player.username || 'Trainer'
+        });
+        this.chatBubbles.set(this.networkClient.getId(), { text: msg, timer: 4.0 });
+      }
+      this.closeChatInput();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.closeChatInput();
+    } else if (e.key === 'Backspace') {
+      e.preventDefault();
+      this.chatInputValue = this.chatInputValue.slice(0, -1);
+    } else if (e.key.length === 1) {
+      e.preventDefault();
+      if (this.chatInputValue.length < 50) {
+        this.chatInputValue += e.key;
+      }
+    }
+  };
+
+  private sendTradeRequest(op: any): void {
+    if (this.networkClient) {
+      this.networkClient.send({
+        type: PacketType.TradeRequest,
+        targetPlayerId: op.id,
+        senderName: this.player.username || 'Trainer'
+      });
+      this.pendingOutgoingTradeRequest = { targetId: op.id, targetName: op.username };
+      this.controlsHUD.showToast(`Sent trade request to ${op.username}!`, '🤝', 4.0);
+    }
+  }
+
+  private acceptIncomingTradeRequest(): void {
+    if (!this.pendingIncomingTradeRequest || !this.networkClient) return;
+    this.networkClient.send({
+      type: PacketType.TradeResponse,
+      senderId: this.pendingIncomingTradeRequest.senderId,
+      senderName: this.pendingIncomingTradeRequest.senderName,
+      accept: true
+    });
+    this.pendingIncomingTradeRequest = null;
+  }
+
+  private declineIncomingTradeRequest(): void {
+    if (!this.pendingIncomingTradeRequest || !this.networkClient) return;
+    this.networkClient.send({
+      type: PacketType.TradeResponse,
+      senderId: this.pendingIncomingTradeRequest.senderId,
+      senderName: this.pendingIncomingTradeRequest.senderName,
+      accept: false
+    });
+    this.pendingIncomingTradeRequest = null;
+  }
+
+  private renderTradeRequestOverlay(ctx: CanvasRenderingContext2D): void {
+    if (!this.pendingIncomingTradeRequest) return;
+
+    ctx.save();
+    const boxW = 220;
+    const boxH = 48;
+    const boxX = (GAME_WIDTH - boxW) / 2;
+    const boxY = 70; // below battle challenge request
+
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.95)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '7px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`🤝 ${this.pendingIncomingTradeRequest.senderName} wants to trade!`, boxX + boxW / 2, boxY + 6);
+
+    const btnW = 90;
+    const btnH = 18;
+    const btnY = boxY + 22;
+
+    // Accept Button
+    const acceptX = boxX + 12;
+    this.acceptTradeBtnBounds = { x: acceptX, y: btnY, w: btnW, h: btnH };
+    ctx.fillStyle = '#059669';
+    ctx.fillRect(acceptX, btnY, btnW, btnH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeRect(acceptX, btnY, btnW, btnH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ACCEPT [Y]', acceptX + btnW / 2, btnY + btnH / 2);
+
+    // Decline Button
+    const declineX = boxX + boxW - btnW - 12;
+    this.declineTradeBtnBounds = { x: declineX, y: btnY, w: btnW, h: btnH };
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(declineX, btnY, btnW, btnH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeRect(declineX, btnY, btnW, btnH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('DECLINE [N]', declineX + btnW / 2, btnY + btnH / 2);
+
+    ctx.restore();
+  }
+
+  private renderPlayerInteractionMenu(ctx: CanvasRenderingContext2D): void {
+    if (!this.selectedPlayerForInteraction) return;
+    
+    ctx.save();
+    const boxW = 160;
+    const boxH = 64;
+    const boxX = (GAME_WIDTH - boxW) / 2;
+    const boxY = (GAME_HEIGHT - boxH) / 2;
+
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.95)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`Trainer: ${this.selectedPlayerForInteraction.username}`, boxX + boxW / 2, boxY + 6);
+
+    // Battle Option Button
+    const btnW = 140;
+    const btnH = 14;
+    const battleY = boxY + 20;
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(boxX + 10, battleY, btnW, btnH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '7px monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('1. Challenge to Battle', boxX + boxW / 2, battleY + btnH / 2);
+
+    // Trade Option Button
+    const tradeY = boxY + 38;
+    ctx.fillStyle = '#10b981';
+    ctx.fillRect(boxX + 10, tradeY, btnW, btnH);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('2. Propose Monster Trade', boxX + boxW / 2, tradeY + btnH / 2);
+
+    // Hint
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '6px monospace';
+    ctx.fillText('[Press 1 or 2, or click outside]', boxX + boxW / 2, boxY + 54);
+
+    ctx.restore();
+  }
+
+  private renderTradeScreen(ctx: CanvasRenderingContext2D): void {
+    if (!this.activeTradeId) return;
+
+    ctx.save();
+    // Darken background
+    ctx.fillStyle = 'rgba(10, 15, 30, 0.85)';
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // Main Box
+    const boxW = 300;
+    const boxH = 180;
+    const boxX = (GAME_WIDTH - boxW) / 2;
+    const boxY = (GAME_HEIGHT - boxH) / 2;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.98)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    // Title Header
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+    ctx.fillRect(boxX + 2, boxY + 2, boxW - 4, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🤝 MONSTER TRADE 🤝', boxX + boxW / 2, boxY + 12);
+
+    // Left Panel: YOUR OFFER
+    const p1X = boxX + 10;
+    const p1Y = boxY + 28;
+    const pW = 135;
+    const pH = 115;
+
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.4)';
+    ctx.fillRect(p1X, p1Y, pW, pH);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(p1X, p1Y, pW, pH);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('YOUR PARTY OFFER:', p1X + 6, p1Y + 12);
+
+    // Render your party slots in left panel
+    for (let i = 0; i < 6; i++) {
+      const mon = this.player.party[i];
+      const slotY = p1Y + 20 + i * 15;
+      const isSelected = this.tradeSelectedSlotIndex === i;
+      const isOffered = this.tradeMyOfferSlot === i;
+
+      if (isOffered) {
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
+      } else if (isSelected) {
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+      } else {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+      }
+      ctx.fillRect(p1X + 4, slotY, pW - 8, 12);
+
+      if (isSelected) {
+        ctx.strokeStyle = '#38bdf8';
+        ctx.strokeRect(p1X + 4, slotY, pW - 8, 12);
+      }
+
+      if (mon) {
+        const species = MONSTER_SPECIES.find(s => s.id === mon.speciesId);
+        const name = mon.nickname || species?.name || 'Unknown';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '7px monospace';
+        ctx.fillText(`${i + 1}. ${name} (Lv.${mon.level})`, p1X + 8, slotY + 6);
+        if (isOffered) {
+          ctx.fillStyle = '#10b981';
+          ctx.textAlign = 'right';
+          ctx.fillText('OFFERED', p1X + pW - 8, slotY + 6);
+          ctx.textAlign = 'left';
+        }
+      } else {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '7px monospace';
+        ctx.fillText(`${i + 1}. [Empty]`, p1X + 8, slotY + 6);
+      }
+    }
+
+    // Right Panel: OPPONENT OFFER
+    const p2X = boxX + boxW - pW - 10;
+    const p2Y = boxY + 28;
+
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.4)';
+    ctx.fillRect(p2X, p2Y, pW, pH);
+    ctx.strokeStyle = '#f43f5e';
+    ctx.strokeRect(p2X, p2Y, pW, pH);
+
+    ctx.fillStyle = '#f43f5e';
+    ctx.font = '8px monospace';
+    ctx.fillText(`${this.tradeOpponentName.toUpperCase()}'S OFFER:`, p2X + 6, p2Y + 12);
+
+    if (this.tradeOpponentOfferSlot >= 0 && this.tradeOpponentOfferMonster) {
+      const mon = this.tradeOpponentOfferMonster;
+      const species = MONSTER_SPECIES.find(s => s.id === mon.speciesId);
+      const name = mon.nickname || species?.name || 'Unknown';
+
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.1)';
+      ctx.fillRect(p2X + 6, p2Y + 25, pW - 12, 50);
+      ctx.strokeStyle = '#f43f5e';
+      ctx.strokeRect(p2X + 6, p2Y + 25, pW - 12, 50);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '8.5px monospace';
+      ctx.fillText(name, p2X + 12, p2Y + 38);
+      ctx.font = '7.5px monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`Level: ${mon.level}`, p2X + 12, p2Y + 50);
+      ctx.fillText(`HP: ${mon.currentHp}/${mon.maxHp}`, p2X + 12, p2Y + 60);
+
+      if (species) {
+        ctx.fillStyle = '#f43f5e';
+        ctx.fillText(`Types: ${species.types.map(t => ['Normal','Fire','Water','Grass','Electric','Ice','Fighting','Poison','Ground','Flying','Psychic','Bug','Rock','Ghost','Dragon'][t]).join('/')}`, p2X + 12, p2Y + 70);
+      }
+    } else {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '7.5px monospace';
+      ctx.fillText('Awaiting offer...', p2X + 12, p2Y + 40);
+    }
+
+    // Confirm button box
+    const btnW = 100;
+    const btnH = 16;
+    const btnX = boxX + (boxW - btnW) / 2;
+    const btnY = boxY + boxH - 44;
+
+    ctx.fillStyle = this.tradeMyConfirmed ? '#059669' : '#0284c7';
+    ctx.fillRect(btnX, btnY, btnW, btnH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(btnX, btnY, btnW, btnH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.tradeMyConfirmed ? 'READY! [C]' : 'CONFIRM [C]', btnX + btnW / 2, btnY + btnH / 2);
+
+    // Cancel button box at bottom right
+    const closeBtnW = 60;
+    const closeBtnH = 12;
+    const closeBtnX = boxX + boxW - closeBtnW - 10;
+    const closeBtnY = boxY + boxH - 20;
+
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(closeBtnX, closeBtnY, closeBtnW, closeBtnH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeRect(closeBtnX, closeBtnY, closeBtnW, closeBtnH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '6px monospace';
+    ctx.fillText('CANCEL', closeBtnX + closeBtnW / 2, closeBtnY + closeBtnH / 2);
+
+    // Bottom status text
+    ctx.fillStyle = this.tradeMyConfirmed ? '#10b981' : '#e2e8f0';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(this.tradeMyConfirmed ? '✅ YOU: READY' : '❌ YOU: NOT READY', p1X + 4, boxY + boxH - 32);
+
+    ctx.fillStyle = this.tradeOpponentConfirmed ? '#10b981' : '#e2e8f0';
+    ctx.textAlign = 'right';
+    ctx.fillText(this.tradeOpponentConfirmed ? `✅ ${this.tradeOpponentName.toUpperCase()}: READY` : `❌ ${this.tradeOpponentName.toUpperCase()}: NOT READY`, p2X + pW - 4, boxY + boxH - 32);
+
+    // Instructions footer
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('[W/S] Select  [Space] Offer  [C] Confirm  [Esc] Cancel', boxX + boxW / 2, boxY + boxH - 10);
+
+    ctx.restore();
+  }
+
+  private renderChatInputBar(ctx: CanvasRenderingContext2D): void {
+    if (!this.isChatInputActive) return;
+
+    ctx.save();
+    const boxW = 240;
+    const boxH = 18;
+    const boxX = (GAME_WIDTH - boxW) / 2;
+    const boxY = GAME_HEIGHT - 36;
+
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.95)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SAY:', boxX + 6, boxY + boxH / 2);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '7px monospace';
+    const cleanVal = this.chatInputValue.length > 35 ? '...' + this.chatInputValue.slice(-35) : this.chatInputValue;
+    const blinkingCursor = Math.floor(Date.now() / 500) % 2 === 0 ? '|' : '';
+    ctx.fillText(cleanVal + blinkingCursor, boxX + 32, boxY + boxH / 2);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '6px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('[Esc] Cancel  [Enter] Send', boxX + boxW - 6, boxY + boxH / 2);
+
+    ctx.restore();
+  }
+
+  private renderChatBubble(ctx: CanvasRenderingContext2D, text: string, sx: number, sy: number): void {
+    ctx.save();
+    ctx.font = '7px monospace';
+    const textWidth = ctx.measureText(text).width;
+    const padding = 4;
+    const bubbleW = textWidth + padding * 2;
+    const bubbleH = 12;
+    const bx = sx + 8 - bubbleW / 2; // center above player
+    const by = sy - 14;
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillRect(bx, by, bubbleW, bubbleH);
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, bubbleW, bubbleH);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + bubbleW / 2, by + bubbleH / 2);
+
+    ctx.restore();
   }
 
   public captureEnvironmentData(): BattleEnvironmentData {

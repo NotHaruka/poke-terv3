@@ -133,6 +133,31 @@ export class NetworkClient {
     return this.connected;
   }
 
+  /** Set custom host for offline/hotspot co-op matchmaking */
+  setHost(host: string): void {
+    let protocol = 'ws:';
+    if (typeof window !== 'undefined') {
+      protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    }
+
+    let cleanHost = host.trim();
+    if (cleanHost.startsWith('ws://') || cleanHost.startsWith('wss://')) {
+      this.url = cleanHost;
+    } else {
+      // If no port specified, default to 3000 (standard port for Poke-ter)
+      if (!cleanHost.includes(':')) {
+        cleanHost = `${cleanHost}:3000`;
+      }
+      this.url = `${protocol}//${cleanHost}`;
+    }
+    console.log(`[NetworkClient] Host updated to: ${this.url}`);
+  }
+
+  /** Get current connection URL */
+  getUrl(): string {
+    return this.url;
+  }
+
   /** Reconnect with a new profile */
   setProfile(username: string): void {
     this.username = username;
@@ -234,6 +259,6 @@ export class NetworkClient {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, 5000);
+    }, 2000);
   }
 }

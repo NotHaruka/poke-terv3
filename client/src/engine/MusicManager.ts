@@ -38,11 +38,12 @@ export class MusicManager {
   public interior: string | null = null;
   public weather: 'clear' | 'rain' | 'storm' | 'snow' = 'clear';
   public timeOfDay: 'morning' | 'day' | 'evening' | 'night' = 'day';
-  public currentScene: string = 'title';
+  public currentScene: string = 'none';
 
   // Internal reference for the HTMLAudioElement
   private currentAudio: HTMLAudioElement | null = null;
   private fadeIntervals: Set<any> = new Set();
+  private fadingAudios: Set<HTMLAudioElement> = new Set();
 
   constructor(audioManager: AudioManager) {
     this.audioManager = audioManager;
@@ -62,7 +63,10 @@ export class MusicManager {
       return;
     }
 
-    if (this.currentTrack === url && this.currentAudio && !this.currentAudio.paused && !forceRestart) {
+    if (this.currentTrack === url && this.currentAudio && !forceRestart) {
+      if (this.currentAudio.paused && this.audioManager.userInteracted) {
+        this.currentAudio.play().catch(() => {});
+      }
       this.updateVolume();
       return;
     }
@@ -153,6 +157,7 @@ export class MusicManager {
    * Fade out a track and stop/pause it when silent.
    */
   private fadeOutAndStop(audio: HTMLAudioElement, durationMs: number): void {
+    this.fadingAudios.add(audio);
     let currentVol = audio.volume;
     const steps = 30;
     const intervalTime = durationMs / steps;
@@ -165,6 +170,7 @@ export class MusicManager {
         audio.pause();
         clearInterval(interval);
         this.fadeIntervals.delete(interval);
+        this.fadingAudios.delete(audio);
       } else {
         audio.volume = Math.max(0, currentVol);
       }
@@ -181,6 +187,10 @@ export class MusicManager {
       clearInterval(interval);
     }
     this.fadeIntervals.clear();
+    for (const audio of this.fadingAudios) {
+      audio.pause();
+    }
+    this.fadingAudios.clear();
   }
 
   /**
