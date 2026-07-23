@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import { ClientState, MapInstance } from './types.js';
 import { AnyPacket, findSafeSpawn, WORLD_SEED } from 'poke-ter-shared';
+import { BattleManager } from './battle/BattleManager.js';
 
 export function getRouteSeed(mapId: string, worldSeed: number = WORLD_SEED): number {
   if (mapId === 'city') return 0;
@@ -18,8 +19,10 @@ export class GameState {
   private maps = new Map<string, MapInstance>();
   private mapEmptyTime = new Map<string, number>();
   public serverStartTime: number = Date.now();
+  public battleManager: BattleManager;
 
   constructor() {
+    this.battleManager = new BattleManager(this);
     this.maps.set('city', {
       id: 'city',
       seed: 0, // 0 for the permanent city

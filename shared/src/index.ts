@@ -24,4 +24,4 @@ export * from './math.js';
 export * from './packets.js';
 export * from './worldgen.js';
 export * from './natures.js';
-export * from './monsterStats.js';
+export * from './monsterStats.js';export * from './monsterData.js';

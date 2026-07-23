@@ -6,7 +6,7 @@
 import { Menu } from './Menu.js';
 import { GAME_WIDTH, GAME_HEIGHT, MonsterInstance, MonsterType } from 'poke-ter-shared';
 import { Player } from '../../entities/Player.js';
-import { MONSTER_SPECIES } from '../../monsters/MonsterData.js';
+import { MONSTER_SPECIES, calculateStats, getMonsterSpecies } from 'poke-ter-shared';
 
 export class PartyMenu extends Menu {
   private player: Player;

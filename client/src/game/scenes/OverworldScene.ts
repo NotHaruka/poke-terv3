@@ -50,7 +50,7 @@ import { FollowerMonster } from '../entities/FollowerMonster.js';
 import { OverworldCombatManager } from '../combat/OverworldCombatManager.js';
 import { StarterSelectModal } from '../ui/menus/StarterSelectModal.js';
 import { PokemartMenu } from '../ui/menus/PokemartMenu.js';
-import { MONSTER_SPECIES } from '../monsters/MonsterData.js';
+import { MONSTER_SPECIES, calculateStats, getMonsterSpecies } from 'poke-ter-shared';
 import { TitleScreenScene } from './TitleScreenScene.js';
 
 // QoL HUD imports
@@ -178,7 +178,26 @@ export class OverworldScene implements Scene {
     this.combatManager = new OverworldCombatManager(this.player, this.particleSystem);
     
     if (this.networkClient) {
-      this.networkClient.on(PacketType.Welcome, this.onWelcome);
+      
+      this.networkClient.on(35 /* BattleChallengeResponse */, (p: any) => {
+        import('../ui/menus/BattleRequestMenu.js').then(m => {
+          this.menuManager.openMenu(new m.BattleRequestMenu(p.challengerId, p.challengerName, this.networkClient!, () => {
+            this.menuManager.closeMenu();
+          }));
+        });
+      });
+      this.networkClient.on(37 /* BattleChallengeResult */, (p: any) => {
+        if (!p.accepted) {
+           this.controlsHUD.showToast(p.message || 'Battle request declined.', '❌', 3.0);
+        }
+      });
+      this.networkClient.on(30 /* BattleStart */, (p: any) => {
+        const game = (window as any).__game;
+        import('./BattleScene.js').then(m => {
+          game.sceneManager.push(new m.BattleScene(this.renderer, this.inputManager, this.networkClient!, this.audioManager, p));
+        });
+      });
+this.networkClient.on(PacketType.Welcome, this.onWelcome);
       this.networkClient.on(PacketType.MapChangeResponse, this.onMapChange);
       this.networkClient.on(PacketType.PlayerJoin, this.onPlayerJoin);
       this.networkClient.on(PacketType.PlayerLeave, this.onPlayerLeave);
@@ -499,7 +518,27 @@ export class OverworldScene implements Scene {
     }
   }
 
-  private getNPCInFront(): NPCDefinition | null {
+  
+  private getOtherPlayerInFront(): any | null {
+    const px = this.player.x;
+    const py = this.player.y;
+    
+    for (const [id, op] of this.otherPlayers) {
+      const dx = op.position.x - px;
+      const dy = op.position.y - py;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance < 24) {
+        const dir = this.player.direction;
+        if (dir.includes('up') && dy < -4) return { id, ...op };
+        if (dir.includes('down') && dy > 4) return { id, ...op };
+        if (dir.includes('left') && dx < -4) return { id, ...op };
+        if (dir.includes('right') && dx > 4) return { id, ...op };
+      }
+    }
+    return null;
+  }
+private getNPCInFront(): NPCDefinition | null {
     const px = this.player.x;
     const py = this.player.y;
     
@@ -755,7 +794,20 @@ export class OverworldScene implements Scene {
 
       // Check NPC / Furniture interactions
       if (!this.menuManager.isOpen() && (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter'))) {
-        const npc = this.getNPCInFront();
+        
+        const op = this.getOtherPlayerInFront();
+        if (op) {
+          if (this.networkClient) {
+            this.networkClient.send({
+              type: 34, // BattleChallengeRequest
+              targetPlayerId: op.id
+            } as any);
+            this.controlsHUD.showToast(`Sent battle request to ${op.username}!`, '⚔️', 3.0);
+          }
+          return;
+        }
+        
+const npc = this.getNPCInFront();
         if (npc) {
           if (npc.sprite === 'clerk' || npc.name.includes('Mart Clerk')) {
             this.menuManager.openMenu(new PokemartMenu(this.player));

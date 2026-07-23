@@ -29,6 +29,11 @@ export function handlePacket(gameState: GameState, client: ClientState, packet: 
     case PacketType.SaveRequest:
       handleSaveRequest(gameState, client, packet as SaveRequestPacket);
       break;
+    case PacketType.BattleChallengeRequest:
+    case PacketType.BattleChallengeAnswer:
+    case PacketType.BattleAction:
+      gameState.battleManager.handlePacket(client, packet);
+      break;
     default:
       console.log(`[?] Unknown packet type: ${packet.type}`);
   }

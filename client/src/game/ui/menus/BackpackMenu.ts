@@ -1,6 +1,6 @@
 import { Menu } from './Menu.js';
 import { GAME_WIDTH, GAME_HEIGHT } from 'poke-ter-shared';
-import { MONSTER_SPECIES } from '../../monsters/MonsterData.js';
+import { MONSTER_SPECIES, calculateStats, getMonsterSpecies } from 'poke-ter-shared';
 import { Player } from '../../entities/Player.js';
 
 export interface ItemData {

@@ -28,6 +28,10 @@ export enum PacketType {
   BattleAction = 31,
   BattleResult = 32,
   BattleEnd = 33,
+  BattleChallengeRequest = 34,
+  BattleChallengeResponse = 35,
+  BattleChallengeAnswer = 36,
+  BattleChallengeResult = 37,
 
   // Monsters
   MonsterEncounter = 40,
@@ -160,8 +164,11 @@ export interface EntityMovePacket extends Packet {
 export interface BattleStartPacket extends Packet {
   type: PacketType.BattleStart;
   battleId: string;
-  wildMonster: MonsterSnapshot;
-  playerMonster: MonsterSnapshot;
+  isPvP: boolean;
+  opponentName: string;
+  opponentId?: string;
+  opponentMonsters: MonsterSnapshot[];
+  playerMonsters: MonsterSnapshot[];
 }
 
 export interface MonsterSnapshot {
@@ -186,22 +193,24 @@ export type BattleActionData =
   | { kind: 'item'; itemId: number }
   | { kind: 'run' };
 
+export type BattleEvent =
+  | { type: 'message'; text: string }
+  | { type: 'damage'; target: 'player' | 'opponent'; amount: number; isCrit: boolean; effectiveness: number }
+  | { type: 'heal'; target: 'player' | 'opponent'; amount: number }
+  | { type: 'status'; target: 'player' | 'opponent'; status: number }
+  | { type: 'faint'; target: 'player' | 'opponent' }
+  | { type: 'switch'; target: 'player' | 'opponent'; monster: MonsterSnapshot }
+  | { type: 'action'; source: 'player' | 'opponent'; action: BattleActionData; moveName?: string }
+  | { type: 'exp'; amount: number }
+  | { type: 'catch'; success: boolean };
+
 export interface BattleResultPacket extends Packet {
   type: PacketType.BattleResult;
   battleId: string;
-  results: BattleRoundResult[];
+  events: BattleEvent[];
+  turnReady: boolean;
   battleOver: boolean;
   winner?: string;
-  caught?: boolean;
-}
-
-export interface BattleRoundResult {
-  attackerAction: BattleActionData;
-  defenderAction?: BattleActionData;
-  damage?: number;
-  message: string;
-  fainted?: boolean;
-  expGained?: number;
 }
 
 export interface BattleEndPacket extends Packet {
@@ -209,6 +218,29 @@ export interface BattleEndPacket extends Packet {
   battleId: string;
   reason: string;
   rewards?: { money: number; exp: number };
+}
+
+export interface BattleChallengeRequestPacket extends Packet {
+  type: PacketType.BattleChallengeRequest;
+  targetPlayerId: string;
+}
+
+export interface BattleChallengeResponsePacket extends Packet {
+  type: PacketType.BattleChallengeResponse;
+  challengerId: string;
+  challengerName: string;
+}
+
+export interface BattleChallengeAnswerPacket extends Packet {
+  type: PacketType.BattleChallengeAnswer;
+  challengerId: string;
+  accept: boolean;
+}
+
+export interface BattleChallengeResultPacket extends Packet {
+  type: PacketType.BattleChallengeResult;
+  accepted: boolean;
+  message?: string;
 }
 
 export interface MonsterEncounterPacket extends Packet {
@@ -286,6 +318,7 @@ export type AnyPacket =
   | ChunkRequestPacket | ChunkDataPacket
   | EntitySpawnPacket | EntityDespawnPacket | EntityMovePacket
   | BattleStartPacket | BattleActionPacket | BattleResultPacket | BattleEndPacket
+  | BattleChallengeRequestPacket | BattleChallengeResponsePacket | BattleChallengeAnswerPacket | BattleChallengeResultPacket
   | MonsterEncounterPacket | CatchAttemptPacket | CatchResultPacket
   | ChatMessagePacket
   | PingPacket | PongPacket | ErrorPacket

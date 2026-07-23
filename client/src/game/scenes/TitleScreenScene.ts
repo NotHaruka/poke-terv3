@@ -84,6 +84,7 @@ export class TitleScreenScene implements Scene {
       // Wipe character data & restart character creation
       localStorage.removeItem('poketer_player_profile');
       localStorage.removeItem('poketer_player_data');
+      localStorage.removeItem('poketer_client_id');
       if (this.audioManager) this.audioManager.playSFX('cancel');
 
       const game = (window as any).__game;

@@ -1,6 +1,6 @@
 /** Monster data definitions and species database */
 
-import { MonsterSpecies, MonsterType, GrowthRate, EvolutionMethod, MonsterStats } from 'poke-ter-shared';
+import { MonsterSpecies, MonsterType, GrowthRate, EvolutionMethod, MonsterStats } from './types.js';
 
 // Base monster species definitions
 export const MONSTER_SPECIES: MonsterSpecies[] = [

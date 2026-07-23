@@ -5,7 +5,7 @@
 
 import { Menu } from './Menu.js';
 import { GAME_WIDTH, GAME_HEIGHT, MonsterInstance, MonsterType, Nature } from 'poke-ter-shared';
-import { MONSTER_SPECIES, calculateStats } from '../../monsters/MonsterData.js';
+import { MONSTER_SPECIES, calculateStats, getMonsterSpecies } from 'poke-ter-shared';
 import { Player } from '../../entities/Player.js';
 
 export class StarterSelectModal extends Menu {
