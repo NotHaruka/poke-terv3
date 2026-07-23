@@ -33,7 +33,10 @@ export class TitleScreenScene implements Scene {
 
   init(): void {
     this.refreshMenuOptions();
-    if (this.audioManager) {
+    const game = (window as any).__game;
+    if (game && game.musicManager) {
+      game.musicManager.updateState({ scene: 'title' });
+    } else if (this.audioManager) {
       this.audioManager.playMusic('/sunlit_safari.mp3');
     }
   }

@@ -72,7 +72,10 @@ export class BattleScene implements Scene {
   }
 
   public init(): void {
-    if (this.audioManager) {
+    const game = (window as any).__game;
+    if (game && game.musicManager) {
+      game.musicManager.enterBattle();
+    } else if (this.audioManager) {
       this.audioManager.playMusic('/sunlit_safari.mp3');
     }
 
@@ -86,6 +89,10 @@ export class BattleScene implements Scene {
 
   public destroy(): void {
     this.networkClient.off(32 /* BattleResult */, this.onBattleResult);
+    const game = (window as any).__game;
+    if (game && game.musicManager) {
+      game.musicManager.exitBattle();
+    }
   }
 
   private onBattleResult = (packet: any) => {

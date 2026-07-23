@@ -12,6 +12,7 @@ import { UIManager } from '../ui/UIManager.js';
 import { NetworkClient } from '../network/NetworkClient.js';
 import { envSystem } from '../../engine/EnvironmentSystem.js';
 import { AudioManager } from '../../engine/AudioManager.js';
+import { MusicManager } from '../../engine/MusicManager.js';
 import { MenuManager } from '../ui/menus/MenuManager.js';
 import { ClockManager } from '../ui/menus/ClockManager.js';
 import { MainMenu } from '../ui/menus/MainMenu.js';
@@ -108,6 +109,7 @@ export class OverworldScene implements Scene {
   private otherPlayers = new Map<string, PlayerSnapshot>();
   private otherFollowers = new Map<string, FollowerMonster>();
   private autosaveTimer: number = 0;
+  private musicUpdateTimer: number = 0;
 
   // Biome discovery tracking
   private lastBiomeName: string = '';
@@ -573,21 +575,50 @@ export class OverworldScene implements Scene {
   }
 
   private updateBackgroundMusic() {
-    if (!this.audioManager) return;
-
-    if (this.doorSystem.isInInterior) {
-      const interior = this.interiorManager.getActiveInterior();
-      if (interior && interior.music) {
-        this.audioManager.playMusic(interior.music);
-        return;
+    const game = (window as any).__game;
+    if (!game || !game.musicManager) {
+      if (!this.audioManager) return;
+      if (this.doorSystem.isInInterior) {
+        const interior = this.interiorManager.getActiveInterior();
+        if (interior && interior.music) {
+          this.audioManager.playMusic(interior.music);
+          return;
+        }
       }
+      if (this.currentMapId === 'city') {
+        this.audioManager.playMusic('/morning_in_the_village.mp3');
+      } else {
+        this.audioManager.playMusic('/lanterns_at_home.mp3');
+      }
+      return;
     }
 
-    if (this.currentMapId === 'city') {
-      this.audioManager.playMusic('/morning_in_the_village.mp3');
+    const isInterior = this.doorSystem.isInInterior || this.currentMapId.includes('interior');
+    const interiorId = isInterior ? this.interiorManager.getActiveInterior()?.id || 'interior' : null;
+
+    let biomeId = 'plains';
+    if (!isInterior) {
+      const gx = Math.floor(this.player.x / 16);
+      const gy = Math.floor(this.player.y / 16);
+      const seed = this.chunkManager.currentSeed;
+      const biome = getBiomeAt(gx, gy, seed, this.currentMapId);
+      biomeId = biome.id;
     } else {
-      this.audioManager.playMusic('/lanterns_at_home.mp3');
+      biomeId = 'interior';
     }
+
+    const weather = (envSystem as any).weather || 'clear';
+    const timeOfDay = this.clockManager.getTimeOfDay();
+
+    game.musicManager.updateState({
+      scene: 'overworld',
+      biome: biomeId,
+      route: this.currentMapId,
+      town: this.currentMapId === 'city' ? 'city' : 'route',
+      interior: interiorId,
+      weather: weather,
+      timeOfDay: timeOfDay,
+    });
   }
 
   init(): void {
@@ -698,6 +729,12 @@ private getNPCInFront(): NPCDefinition | null {
     this.transitionManager.update(dt);
     this.controlsHUD.update(dt);
     this.minimapHUD.update(dt);
+    
+    this.musicUpdateTimer += dt;
+    if (this.musicUpdateTimer >= 500) {
+      this.musicUpdateTimer = 0;
+      this.updateBackgroundMusic();
+    }
     
     this.menuManager.update(dt);
     

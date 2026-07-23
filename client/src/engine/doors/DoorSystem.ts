@@ -8,6 +8,7 @@ import { BuildingManager } from '../buildings/BuildingManager.js';
 import { InteriorManager } from '../interiors/InteriorManager.js';
 import { TransitionManager } from './TransitionManager.js';
 import { AudioManager } from '../AudioManager.js';
+import { MusicManager } from '../MusicManager.js';
 import { Player } from '../../game/entities/Player.js';
 import { Camera } from '../Camera.js';
 import { PacketType, findSafeSpawn } from 'poke-ter-shared';
@@ -134,7 +135,10 @@ export class DoorSystem {
       this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
 
       // Update background music if interior defines its own track
-      if (this.audioManager && interior.music) {
+      const musicManager = MusicManager.getInstance();
+      if (musicManager) {
+        musicManager.updateState({ interior: interiorMapId });
+      } else if (this.audioManager && interior.music) {
         this.audioManager.playMusic(interior.music);
       }
 
@@ -186,7 +190,14 @@ export class DoorSystem {
       this.camera.snapTo(this.player.getCenterX(), this.player.getCenterY());
 
       // Restore Overworld BGM
-      if (this.audioManager) {
+      const musicManager = MusicManager.getInstance();
+      if (musicManager) {
+        musicManager.updateState({
+          interior: null,
+          route: savedState.mapId,
+          town: savedState.mapId === 'city' ? 'city' : 'route'
+        });
+      } else if (this.audioManager) {
         const music = savedState.mapId === 'city' ? '/morning_in_the_village.mp3' : '/lanterns_at_home.mp3';
         this.audioManager.playMusic(music);
       }

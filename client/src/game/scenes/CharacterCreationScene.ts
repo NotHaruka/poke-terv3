@@ -84,6 +84,10 @@ export class CharacterCreationScene implements Scene {
 
   init(): void {
     window.addEventListener('keydown', this.typingListener);
+    const game = (window as any).__game;
+    if (game && game.musicManager) {
+      game.musicManager.updateState({ scene: 'character_creation' });
+    }
   }
 
   destroy(): void {

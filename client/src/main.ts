@@ -8,6 +8,7 @@ import { SceneManager } from './engine/SceneManager.js';
 import { TitleScreenScene } from './game/scenes/TitleScreenScene.js';
 import { NetworkClient } from './game/network/NetworkClient.js';
 import { AudioManager } from './engine/AudioManager.js';
+import { MusicManager } from './engine/MusicManager.js';
 import { InteriorRegistry } from './engine/interiors/InteriorRegistry.js';
 
 class PokeTerGame {
@@ -17,12 +18,14 @@ class PokeTerGame {
   private gameLoop: GameLoop;
   private networkClient: NetworkClient | null = null;
   private audioManager: AudioManager;
+  public musicManager: MusicManager;
 
   constructor(container: HTMLElement) {
     // Initialize core systems
     this.renderer = new Renderer(container);
     this.inputManager = new InputManager();
     this.audioManager = new AudioManager();
+    this.musicManager = new MusicManager(this.audioManager);
     this.sceneManager = new SceneManager();
     
     // Initialize registries

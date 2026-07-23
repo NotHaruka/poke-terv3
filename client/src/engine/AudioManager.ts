@@ -1,3 +1,5 @@
+import { MusicManager } from './MusicManager.js';
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   public musicVol = 0.5; // default music volume (0.0 to 1.0)
@@ -55,12 +57,23 @@ export class AudioManager {
     if (this.ctx?.state === 'suspended') {
       this.ctx.resume().catch(err => console.error('Failed to resume audio context:', err));
     }
-    if (this.currentAudio && this.currentAudio.paused) {
+    const musicManager = MusicManager.getInstance();
+    if (musicManager) {
+      musicManager.resume();
+    } else if (this.currentAudio && this.currentAudio.paused) {
       this.currentAudio.play().catch(() => {});
     }
   }
 
   playMusic(url: string, fadeDurationMs = 1200): void {
+    const musicManager = MusicManager.getInstance();
+    if (musicManager) {
+      this.currentTrackUrl = url;
+      this.pendingMusicUrl = url;
+      musicManager.playTrack(url, fadeDurationMs);
+      return;
+    }
+
     if (!this.userInteracted) {
       this.currentTrackUrl = url;
       this.pendingMusicUrl = url;
@@ -124,6 +137,12 @@ export class AudioManager {
   }
 
   stopMusic(): void {
+    const musicManager = MusicManager.getInstance();
+    if (musicManager) {
+      musicManager.stopMusic();
+      return;
+    }
+
     if (this.currentAudio) {
       this.currentAudio.pause();
       this.currentAudio = null;
@@ -137,6 +156,12 @@ export class AudioManager {
 
   setMusicVolume(volume: number): void {
     this.musicVol = Math.max(0, Math.min(1, volume));
+    const musicManager = MusicManager.getInstance();
+    if (musicManager) {
+      musicManager.updateVolume();
+      return;
+    }
+
     if (this.currentAudio) {
       this.currentAudio.volume = this.musicVol;
     }
