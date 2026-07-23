@@ -114,6 +114,8 @@ export function expToNextLevel(curve: GrowthRate, currentLevel: number): number 
 
 // ===== Spawning a wild monster instance =====
 
+import { getDefaultMovesForSpecies } from './monsterData.js';
+
 export function spawnWildMonster(species: MonsterSpecies, level: number): MonsterInstance {
   const ivs = rollIVs();
   const evs = emptyEVs();
@@ -129,7 +131,7 @@ export function spawnWildMonster(species: MonsterSpecies, level: number): Monste
     currentHp: stats.hp,
     maxHp: stats.hp,
     stats,
-    moves: [], // TODO: populate from a per-species learnset once moves are wired up
+    moves: getDefaultMovesForSpecies(species.id),
     status: StatusEffect.None,
     friendship: 70, // standard base friendship starting value
     experience: expForLevel(species.growthRate, level),

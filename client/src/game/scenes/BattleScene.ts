@@ -4,31 +4,39 @@ import { InputManager } from '../../engine/InputManager.js';
 import { NetworkClient } from '../network/NetworkClient.js';
 import { AudioManager } from '../../engine/AudioManager.js';
 import { 
-  PacketType, BattleStartPacket, BattleActionData, 
-  BattleResultPacket, MonsterSnapshot, getMonsterSpecies,
-  MoveData, getMoveData
+  BattleStartPacket, BattleResultPacket, MonsterSnapshot,
+  getDefaultMovesForSpecies, getMonsterSpecies
 } from 'poke-ter-shared';
 
+import { BattleRenderer } from '../battle/BattleRenderer.js';
+import { BattleUI } from '../battle/BattleUI.js';
+import { BattleMessageBox } from '../battle/BattleMessageBox.js';
+import { BattleAnimationManager } from '../battle/BattleAnimationManager.js';
+import { BattleStateMachine, BattleState } from '../battle/BattleStateMachine.js';
+
 export class BattleScene implements Scene {
-  private renderer: Renderer;
+  private rendererEngine: Renderer;
   private inputManager: InputManager;
   private networkClient: NetworkClient;
   private audioManager: AudioManager | null;
   private startPacket: BattleStartPacket;
 
-  private state: 'CHOOSING_ACTION' | 'CHOOSING_MOVE' | 'WAITING' | 'ANIMATING' | 'ENDED' = 'CHOOSING_ACTION';
-  private menuIndex = 0;
-  private moveIndex = 0;
-  
-  private messages: string[] = [];
-  private currentMessage = '';
-  private messageTimer = 0;
-  
+  private stateMachine: BattleStateMachine = new BattleStateMachine(BattleState.INTRO_SLIDE);
+  private battleRenderer: BattleRenderer = new BattleRenderer();
+  private msgBox: BattleMessageBox;
+  private ui: BattleUI;
+  private animManager: BattleAnimationManager;
+
   private p1Monsters: MonsterSnapshot[];
   private p2Monsters: MonsterSnapshot[];
-  
+  private p1ActiveIndex: number = 0;
+  private p2ActiveIndex: number = 0;
+
   private p1Active: MonsterSnapshot;
   private p2Active: MonsterSnapshot;
+
+  private activeMoves: number[] = [];
+  private showPartyModal: boolean = false;
 
   constructor(
     renderer: Renderer,
@@ -37,219 +45,214 @@ export class BattleScene implements Scene {
     audioManager: AudioManager | null,
     startPacket: BattleStartPacket
   ) {
-    this.renderer = renderer;
+    this.rendererEngine = renderer;
     this.inputManager = inputManager;
     this.networkClient = networkClient;
     this.audioManager = audioManager;
     this.startPacket = startPacket;
-    
-    this.p1Monsters = startPacket.playerMonsters;
-    this.p2Monsters = startPacket.opponentMonsters;
-    
-    this.p1Active = this.p1Monsters?.find(m => m.currentHp > 0) || this.p1Monsters?.[0];
-    this.p2Active = this.p2Monsters?.find(m => m.currentHp > 0) || this.p2Monsters?.[0];
+
+    this.p1Monsters = startPacket.playerMonsters || [];
+    this.p2Monsters = startPacket.opponentMonsters || [];
+
+    this.p1ActiveIndex = Math.max(0, this.p1Monsters.findIndex(m => m.currentHp > 0));
+    this.p2ActiveIndex = Math.max(0, this.p2Monsters.findIndex(m => m.currentHp > 0));
+
+    this.p1Active = this.p1Monsters[this.p1ActiveIndex] || { speciesId: 1, level: 5, currentHp: 20, maxHp: 20, stats: { hp:20, attack:10, defense:10, spAttack:10, spDefense:10, speed:10 }, status: 0 };
+    this.p2Active = this.p2Monsters[this.p2ActiveIndex] || { speciesId: 4, level: 5, currentHp: 20, maxHp: 20, stats: { hp:20, attack:10, defense:10, spAttack:10, spDefense:10, speed:10 }, status: 0 };
+
+    this.activeMoves = getDefaultMovesForSpecies(this.p1Active.speciesId);
+
+    this.msgBox = new BattleMessageBox(audioManager);
+    this.ui = new BattleUI(audioManager);
+    this.animManager = new BattleAnimationManager(this.battleRenderer, this.msgBox, audioManager);
   }
 
-  init(): void {
+  public init(): void {
     if (this.audioManager) {
-      this.audioManager.playMusic('/battle.mp3'); // Assuming there's a battle BGM
-    }
-    this.currentMessage = `Battle started against ${this.startPacket.opponentName}!`;
-    this.state = 'ANIMATING'; // just show message first
-    this.messages = [this.currentMessage];
-    
-    this.networkClient.on(32 /* BattleResult */, this.onBattleResult);
-  }
-
-  destroy(): void {
-    if (this.audioManager) {
-      // Restore overworld BGM
       this.audioManager.playMusic('/sunlit_safari.mp3');
     }
+
+    this.networkClient.on(32 /* BattleResult */, this.onBattleResult);
+
+    // Start intro slide animation sequence
+    this.stateMachine.setState(BattleState.INTRO_SLIDE);
+    this.battleRenderer.opponentTrainerSlide = 0;
+    this.battleRenderer.playerTrainerSlide = 0;
+  }
+
+  public destroy(): void {
     this.networkClient.off(32 /* BattleResult */, this.onBattleResult);
   }
 
   private onBattleResult = (packet: any) => {
     const res = packet as BattleResultPacket;
     if (res.battleId !== this.startPacket.battleId) return;
-    
-    // Queue events for animation
-    for (const ev of res.events) {
-      if (ev.type === 'message') {
-        this.messages.push(ev.text);
-      } else if (ev.type === 'damage') {
-        this.messages.push(`Damage dealt!`); // simplified
-        if (ev.target === 'player') {
-          this.p1Active.currentHp = Math.max(0, this.p1Active.currentHp - ev.amount);
-        } else {
-          this.p2Active.currentHp = Math.max(0, this.p2Active.currentHp - ev.amount);
-        }
-      } else if (ev.type === 'switch') {
-        if (ev.target === 'player') {
-          this.p1Active = ev.monster;
-        } else {
-          this.p2Active = ev.monster;
-        }
-      }
-    }
-    
-    if (res.battleOver) {
-      this.messages.push(`Battle Over! ${res.winner ? res.winner + ' wins!' : ''}`);
-      this.messages.push('CLOSE_BATTLE');
-    }
-    
-    if (this.state === 'WAITING') {
-      this.state = 'ANIMATING';
-      if (this.messages.length > 0) {
-         this.currentMessage = this.messages.shift()!;
-      }
-    }
-  }
 
-  update(dt: number): void {
-    if (this.state === 'ANIMATING') {
-      this.messageTimer += dt;
-      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter') || this.messageTimer > 2000) {
-        this.messageTimer = 0;
-        if (this.messages.length > 0) {
-          const nextMsg = this.messages.shift()!;
-          if (nextMsg === 'CLOSE_BATTLE') {
-            const game = (window as any).__game;
-            game.sceneManager.pop();
-          } else {
-            this.currentMessage = nextMsg;
-          }
+    this.stateMachine.setState(BattleState.ANIMATING_ROUND);
+    this.animManager.playEventSequence(res.events, () => {
+      // Update active snapshots after round
+      if (res.battleOver) {
+        if (res.winner === this.startPacket.opponentName) {
+          this.stateMachine.setState(BattleState.DEFEAT);
+          this.msgBox.setText("You were defeated...", 25);
         } else {
-          this.state = 'CHOOSING_ACTION';
+          this.stateMachine.setState(BattleState.VICTORY);
+          this.msgBox.setText("You won the battle!", 25);
+        }
+      } else {
+        this.stateMachine.setState(BattleState.MAIN_MENU);
+      }
+    });
+  };
+
+  public update(dt: number): void {
+    const state = this.stateMachine.getState();
+    this.stateMachine.update(dt);
+    this.battleRenderer.update(dt);
+    this.ui.update(dt);
+    this.msgBox.update(dt);
+    this.animManager.update(dt);
+
+    // INTRO SLIDE ANIMATION STAGE
+    if (state === BattleState.INTRO_SLIDE) {
+      this.battleRenderer.opponentTrainerSlide = Math.min(1, this.battleRenderer.opponentTrainerSlide + dt * 0.003);
+      this.battleRenderer.playerTrainerSlide = Math.min(1, this.battleRenderer.playerTrainerSlide + dt * 0.003);
+
+      if (this.battleRenderer.opponentTrainerSlide >= 1.0) {
+        this.stateMachine.setState(BattleState.INTRO_TEXT);
+        this.msgBox.setText(`Trainer ${this.startPacket.opponentName} wants to battle!`, 22);
+      }
+      return;
+    }
+
+    // INTRO TEXT STAGE
+    if (state === BattleState.INTRO_TEXT) {
+      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter') || this.msgBox.isComplete()) {
+        if (this.msgBox.isComplete()) {
+          this.stateMachine.setState(BattleState.INTRO_SEND_OUT);
+          this.battleRenderer.throwPokeball('opponent');
+          this.battleRenderer.throwPokeball('player');
+          this.msgBox.setText(`Go! ${(this.p1Active.nickname || getMonsterSpecies(this.p1Active.speciesId)?.name || 'Monster')}!`, 22);
+        } else {
+          this.msgBox.completeInstantly();
         }
       }
       return;
     }
 
-    if (this.state === 'CHOOSING_ACTION') {
-      if (this.inputManager.justPressed('ArrowRight') || this.inputManager.justPressed('KeyD')) {
-        this.menuIndex = (this.menuIndex + 1) % 4;
+    // INTRO SEND OUT STAGE
+    if (state === BattleState.INTRO_SEND_OUT) {
+      if (this.msgBox.isComplete() && !this.battleRenderer.activeBallArc) {
+        this.stateMachine.setState(BattleState.MAIN_MENU);
       }
-      if (this.inputManager.justPressed('ArrowLeft') || this.inputManager.justPressed('KeyA')) {
-        this.menuIndex = (this.menuIndex - 1 + 4) % 4;
-      }
-      if (this.inputManager.justPressed('ArrowDown') || this.inputManager.justPressed('KeyS')) {
-        this.menuIndex = (this.menuIndex + 2) % 4;
-      }
-      if (this.inputManager.justPressed('ArrowUp') || this.inputManager.justPressed('KeyW')) {
-        this.menuIndex = (this.menuIndex - 2 + 4) % 4;
-      }
-      
-      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
-        if (this.menuIndex === 0) { // Fight
-          this.state = 'CHOOSING_MOVE';
-          this.moveIndex = 0;
-        } else if (this.menuIndex === 1) { // Bag
-           // stub
-        } else if (this.menuIndex === 2) { // Monster
-           // stub
-        } else if (this.menuIndex === 3) { // Run
+      return;
+    }
+
+    // MAIN MENU INPUT
+    if (state === BattleState.MAIN_MENU) {
+      const p1Name = this.p1Active.nickname || getMonsterSpecies(this.p1Active.speciesId)?.name || 'Monster';
+
+      if (this.inputManager.justPressed('ArrowLeft') || this.inputManager.justPressed('KeyA') ||
+          this.inputManager.justPressed('ArrowRight') || this.inputManager.justPressed('KeyD') ||
+          this.inputManager.justPressed('ArrowUp') || this.inputManager.justPressed('KeyW') ||
+          this.inputManager.justPressed('ArrowDown') || this.inputManager.justPressed('KeyS') ||
+          this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space')) {
+
+        const choice = this.ui.handleMainMenuInput({ key: this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space') ? 'Enter' : 'Arrow' } as any);
+
+        if (choice === 'FIGHT') {
+          this.stateMachine.setState(BattleState.MOVE_MENU);
+        } else if (choice === 'PARTY') {
+          this.showPartyModal = true;
+          this.stateMachine.setState(BattleState.PARTY_MENU);
+        } else if (choice === 'RUN') {
           if (this.startPacket.isPvP) {
-            this.messages = ["You can't run from a trainer battle!"];
-            this.state = 'ANIMATING';
+            this.msgBox.setText("Can't run from a trainer battle!", 22);
+          } else {
+            this.exitBattle();
           }
         }
       }
-    } else if (this.state === 'CHOOSING_MOVE') {
-      if (this.inputManager.justPressed('Escape') || this.inputManager.justPressed('Backspace')) {
-        this.state = 'CHOOSING_ACTION';
-      }
-      
-      // Select move (simplified)
-      if (this.inputManager.justPressed('ArrowDown')) this.moveIndex = (this.moveIndex + 1) % 4;
-      if (this.inputManager.justPressed('ArrowUp')) this.moveIndex = (this.moveIndex - 1 + 4) % 4;
+      return;
+    }
 
-      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
+    // MOVE MENU INPUT
+    if (state === BattleState.MOVE_MENU) {
+      if (this.inputManager.justPressed('Escape') || this.inputManager.justPressed('KeyB')) {
+        this.stateMachine.setState(BattleState.MAIN_MENU);
+        return;
+      }
+
+      if (this.inputManager.justPressed('Enter') || this.inputManager.justPressed('Space')) {
+        const moveIdx = this.ui.getMenuState().moveOptionIndex;
         this.networkClient.send({
           type: 31 /* BattleAction */,
           battleId: this.startPacket.battleId,
-          action: { kind: 'attack', moveIndex: this.moveIndex }
+          action: { kind: 'attack', moveIndex: moveIdx }
         });
-        this.state = 'WAITING';
-        this.currentMessage = "Waiting for opponent...";
+
+        this.stateMachine.setState(BattleState.WAITING_FOR_SERVER);
+        this.msgBox.setText("Waiting for opponent...", 9999);
       }
+      return;
+    }
+
+    // VICTORY OR DEFEAT
+    if (state === BattleState.VICTORY || state === BattleState.DEFEAT) {
+      if (this.inputManager.justPressed('Space') || this.inputManager.justPressed('Enter')) {
+        this.exitBattle();
+      }
+      return;
     }
   }
 
-  render(): void {
-    const ctx = this.renderer.getContext();
-    const w = this.renderer.getWidth();
-    const h = this.renderer.getHeight();
+  private exitBattle(): void {
+    const game = (window as any).__game;
+    if (game && game.sceneManager) {
+      game.sceneManager.pop();
+    }
+  }
 
-    ctx.fillStyle = '#78C850'; // Grass background
-    ctx.fillRect(0, 0, w, h);
+  public render(): void {
+    const ctx = this.rendererEngine.getContext();
+    const w = this.rendererEngine.getWidth();
+    const h = this.rendererEngine.getHeight();
 
-    // Draw Opponent
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(w - 80, 80, 30, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'black';
-    ctx.font = '10px "Press Start 2P"';
-    if (this.p2Active) {
-      ctx.fillText(`${getMonsterSpecies(this.p2Active.speciesId)?.name || 'Unknown'} Lvl ${this.p2Active.level}`, w - 160, 30);
-      ctx.fillStyle = 'red';
-      ctx.fillRect(w - 160, 40, 100, 10);
-      ctx.fillStyle = '#0f0';
-      ctx.fillRect(w - 160, 40, 100 * (this.p2Active.currentHp / this.p2Active.maxHp), 10);
+    ctx.save();
+
+    // Render 1. Background terrain
+    this.battleRenderer.renderBackground(ctx, w, h, 'grass');
+
+    // Render 2. Trainers & Monsters
+    const state = this.stateMachine.getState();
+    const showTrainersInIntro = state === BattleState.INTRO_SLIDE || state === BattleState.INTRO_TEXT;
+
+    this.battleRenderer.renderOpponentTrainer(ctx, this.startPacket.opponentName, showTrainersInIntro);
+    this.battleRenderer.renderPlayerTrainer(ctx, showTrainersInIntro);
+
+    if (!showTrainersInIntro || state === BattleState.INTRO_SEND_OUT || state === BattleState.MAIN_MENU || state === BattleState.MOVE_MENU || state === BattleState.ANIMATING_ROUND || state === BattleState.WAITING_FOR_SERVER) {
+      this.battleRenderer.renderOpponentMonster(ctx, this.p2Active);
+      this.battleRenderer.renderPlayerMonster(ctx, this.p1Active);
     }
 
-    // Draw Player
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(80, h - 120, 40, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'black';
-    if (this.p1Active) {
-      ctx.fillText(`${getMonsterSpecies(this.p1Active.speciesId)?.name || 'Unknown'} Lvl ${this.p1Active.level}`, 20, h - 80);
-      ctx.fillStyle = 'red';
-      ctx.fillRect(20, h - 70, 100, 10);
-      ctx.fillStyle = '#0f0';
-      ctx.fillRect(20, h - 70, 100 * (this.p1Active.currentHp / this.p1Active.maxHp), 10);
-    }
-    
-    // UI Box
-    const boxH = 60;
-    ctx.fillStyle = '#f8f8f8';
-    ctx.fillRect(0, h - boxH, w, boxH);
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(0, h - boxH, w, boxH);
-    
-    ctx.fillStyle = '#333';
-    ctx.font = '10px "Press Start 2P"';
+    this.battleRenderer.renderActiveBallArc(ctx);
+    this.battleRenderer.renderParticles(ctx);
 
-    if (this.state === 'ANIMATING' || this.state === 'WAITING') {
-      ctx.fillText(this.currentMessage, 16, h - boxH + 24);
-    } else if (this.state === 'CHOOSING_ACTION') {
-      const options = ['FIGHT', 'BAG', 'MONSTER', 'RUN'];
-      for(let i=0; i<4; i++) {
-        const x = w/2 + (i%2)*80;
-        const y = h - boxH + 24 + Math.floor(i/2)*20;
-        if(this.menuIndex === i) {
-          ctx.fillStyle = '#e74c3c';
-          ctx.fillText('▶', x-12, y);
-        }
-        ctx.fillStyle = '#333';
-        ctx.fillText(options[i], x, y);
-      }
-      ctx.fillText('What will you do?', 16, h - boxH + 24);
-    } else if (this.state === 'CHOOSING_MOVE') {
-      // Just draw moves list
-      for(let i=0; i<4; i++) {
-        const y = h - boxH + 16 + i*12;
-        if(this.moveIndex === i) {
-          ctx.fillStyle = '#e74c3c';
-          ctx.fillText('▶', w/2-12, y);
-        }
-        ctx.fillStyle = '#333';
-        ctx.fillText(`Move ${i+1}`, w/2, y);
-      }
+    // Render 3. Status Info Frames (Opponent Top Left, Player Bottom Right)
+    this.battleRenderer.renderOpponentStatusBox(ctx, this.p2Active);
+    this.battleRenderer.renderPlayerStatusBox(ctx, this.p1Active, 0.65);
+
+    // Render 4. Battle UI Controls & Text Boxes
+    const activeMonName = this.p1Active.nickname || getMonsterSpecies(this.p1Active.speciesId)?.name || 'Monster';
+
+    if (state === BattleState.MAIN_MENU) {
+      this.ui.renderMainMenu(ctx, activeMonName, 0, 180, w, 60);
+    } else if (state === BattleState.MOVE_MENU) {
+      this.ui.renderMoveMenu(ctx, this.activeMoves, 0, 180, w, 60);
+    } else {
+      this.msgBox.render(ctx, 0, 180, w, 60);
     }
+
+    ctx.restore();
   }
 }

@@ -3,7 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from 'poke-ter-shared';
 
 export class PlayerInteractionMenu extends Menu {
   private targetName: string;
-  private options: string[] = ['Challenge to Battle', 'Cancel'];
+  private options: string[] = ['Challenge to Battle', 'Trade', 'View Trainer', 'Cancel'];
   private selectedIndex: number = 0;
   private onSelectOption: (option: string) => void;
 

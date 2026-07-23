@@ -2,9 +2,9 @@ import { ClientState } from '../types.js';
 import { 
   BattleActionData, BattleEvent, MonsterSnapshot, 
   PacketType, BattleResultPacket, BattleEndPacket,
-  MonsterInstance, MoveData, getMoveData,
-  MonsterStats, StatusEffect, getMonsterSpecies,
-  Stat
+  MonsterInstance, MoveData, getMoveData, getDefaultMovesForSpecies,
+  MonsterStats, StatusEffect, getMonsterSpecies, getTypeEffectiveness,
+  MoveCategory
 } from 'poke-ter-shared';
 import { GameState } from '../game.js';
 
@@ -29,6 +29,22 @@ export class BattleInstance {
     this.p2 = p2;
     this.isPvP = !!p2;
     
+    // Ensure parties have moves
+    if (this.p1.playerData?.party) {
+      for (const m of this.p1.playerData.party) {
+        if (!m.moves || m.moves.length === 0) {
+          m.moves = getDefaultMovesForSpecies(m.speciesId);
+        }
+      }
+    }
+    if (this.p2?.playerData?.party) {
+      for (const m of this.p2.playerData.party) {
+        if (!m.moves || m.moves.length === 0) {
+          m.moves = getDefaultMovesForSpecies(m.speciesId);
+        }
+      }
+    }
+
     // Init active monster indices (find first alive)
     this.p1ActiveIndex = this.getFirstAlive(this.p1.playerData!.party);
     if (this.p2 && this.p2.playerData) {
@@ -38,7 +54,7 @@ export class BattleInstance {
 
   getFirstAlive(party: MonsterInstance[]): number {
     const idx = party.findIndex(m => m.currentHp > 0);
-    return Math.max(0, idx); // Fallback to 0
+    return Math.max(0, idx);
   }
   
   toSnapshot(monster: MonsterInstance): MonsterSnapshot {
@@ -64,26 +80,17 @@ export class BattleInstance {
       if (this.p1Action && this.p2Action) {
         this.resolveRound();
       }
-    } else {
-      // PvE
-      if (this.p1Action) {
-        // AI chooses random move
-        const party = this.p2!.playerData!.party; // Assuming wild/NPC is stored in p2 temporarily, or we create a dummy ClientState for PvE.
-        // Actually for now we just handle PvP logic properly. 
-        // We'll stub PvE logic or wait until we implement wild battles.
-      }
     }
   }
 
   resolveRound() {
     const p1Party = this.p1.playerData!.party;
     const p2Party = this.p2!.playerData!.party;
-    const p1Mon = p1Party[this.p1ActiveIndex];
-    const p2Mon = p2Party[this.p2ActiveIndex];
+    let p1Mon = p1Party[this.p1ActiveIndex];
+    let p2Mon = p2Party[this.p2ActiveIndex];
     
     const events: BattleEvent[] = [];
 
-    // Helper to send events
     const finishRound = () => {
       this.p1Action = undefined;
       this.p2Action = undefined;
@@ -93,7 +100,7 @@ export class BattleInstance {
       let battleOver = !p1Alive || !p2Alive;
       let winner = battleOver ? (!p1Alive ? this.p2?.username : this.p1.username) : undefined;
 
-      const res: BattleResultPacket = {
+      const res1: BattleResultPacket = {
         type: PacketType.BattleResult,
         battleId: this.id,
         events,
@@ -102,19 +109,16 @@ export class BattleInstance {
         winner
       };
       
-      this.server.send(this.p1, res);
-      if (this.p2) this.server.send(this.p2, res);
+      this.server.send(this.p1, res1);
+      if (this.p2) this.server.send(this.p2, res1);
 
       if (battleOver) {
         this.server.battleManager.endBattle(this.id, "KO");
       }
     };
 
-    // simplified resolution
-    let p1First = p1Mon.stats.speed >= p2Mon.stats.speed; // naive speed check
+    let p1First = p1Mon.stats.speed >= p2Mon.stats.speed;
 
-    // Sort actions
-    // Switch > items > run > attack
     const order = [
       { p: 1, c: this.p1, m: p1Mon, action: this.p1Action!, party: p1Party, isFirst: p1First },
       { p: 2, c: this.p2!, m: p2Mon, action: this.p2Action!, party: p2Party, isFirst: !p1First }
@@ -129,10 +133,8 @@ export class BattleInstance {
     });
 
     for (const exec of order) {
-      if (exec.m.currentHp <= 0 && exec.action.kind !== 'switch') continue; // Fainted, can't act
+      if (exec.m.currentHp <= 0 && exec.action.kind !== 'switch') continue;
 
-      const target = exec.p === 1 ? 'player' : 'opponent';
-      const enemyTarget = exec.p === 1 ? 'opponent' : 'player';
       const enemyExec = order.find(e => e.p !== exec.p)!;
 
       if (exec.action.kind === 'switch') {
@@ -140,28 +142,79 @@ export class BattleInstance {
         else this.p2ActiveIndex = exec.action.slot;
         
         const newMon = exec.party[exec.action.slot];
-        exec.m = newMon; // Update local ref
+        exec.m = newMon;
         
+        const speciesName = newMon.nickname || getMonsterSpecies(newMon.speciesId)?.name || 'Monster';
         events.push({
-          type: 'message', text: `${exec.c.username} sent out ${getMonsterSpecies(newMon.speciesId)?.name}!`
+          type: 'message', text: `${exec.c.username} sent out ${speciesName}!`
         });
         events.push({
-          type: 'switch', target, monster: this.toSnapshot(newMon)
+          type: 'switch', target: exec.p === 1 ? 'player' : 'opponent', monster: this.toSnapshot(newMon)
         });
       }
       else if (exec.action.kind === 'attack') {
-        const moveId = exec.m.moves[exec.action.moveIndex];
-        // Stub move logic
-        events.push({ type: 'message', text: `${getMonsterSpecies(exec.m.speciesId)?.name} attacked!` });
+        if (!exec.m.moves || exec.m.moves.length === 0) {
+          exec.m.moves = getDefaultMovesForSpecies(exec.m.speciesId);
+        }
+        const moveId = exec.m.moves[exec.action.moveIndex] || exec.m.moves[0] || 1;
+        const moveData = getMoveData(moveId);
+        const attackerName = exec.m.nickname || getMonsterSpecies(exec.m.speciesId)?.name || 'Monster';
+        const defenderName = enemyExec.m.nickname || getMonsterSpecies(enemyExec.m.speciesId)?.name || 'Monster';
+        const defenderSpecies = getMonsterSpecies(enemyExec.m.speciesId);
+
+        events.push({
+          type: 'action',
+          source: exec.p === 1 ? 'player' : 'opponent',
+          action: exec.action,
+          moveName: moveData.name
+        });
+
+        events.push({
+          type: 'message',
+          text: `${attackerName} used ${moveData.name}!`
+        });
+
+        // Damage calculation
+        const levelFactor = Math.floor((2 * exec.m.level) / 5) + 2;
+        const isSpecial = moveData.category === MoveCategory.Special;
+        const atk = isSpecial ? exec.m.stats.spAttack : exec.m.stats.attack;
+        const def = isSpecial ? enemyExec.m.stats.spDefense : enemyExec.m.stats.defense;
         
-        let dmg = Math.max(1, Math.floor((exec.m.stats.attack * 10) / enemyExec.m.stats.defense));
-        enemyExec.m.currentHp = Math.max(0, enemyExec.m.currentHp - dmg);
+        let baseDmg = Math.floor((levelFactor * moveData.power * (atk / Math.max(1, def))) / 50) + 2;
         
-        events.push({ type: 'damage', target: enemyTarget, amount: dmg, isCrit: false, effectiveness: 1 });
+        const isCrit = Math.random() < 0.0625;
+        const critMult = isCrit ? 1.5 : 1.0;
         
+        const types: [number, number | null] = defenderSpecies ? defenderSpecies.types : [0, null];
+        const effectiveness = getTypeEffectiveness(moveData.type, types);
+        
+        const randomMult = 0.85 + Math.random() * 0.15;
+        const finalDmg = Math.max(1, Math.floor(baseDmg * critMult * effectiveness * randomMult));
+
+        enemyExec.m.currentHp = Math.max(0, enemyExec.m.currentHp - finalDmg);
+
+        events.push({
+          type: 'damage',
+          target: exec.p === 1 ? 'opponent' : 'player',
+          amount: finalDmg,
+          isCrit,
+          effectiveness
+        });
+
+        if (isCrit) {
+          events.push({ type: 'message', text: 'A critical hit!' });
+        }
+        if (effectiveness >= 2.0) {
+          events.push({ type: 'message', text: "It's super effective!" });
+        } else if (effectiveness > 0 && effectiveness < 1.0) {
+          events.push({ type: 'message', text: "It's not very effective..." });
+        } else if (effectiveness === 0) {
+          events.push({ type: 'message', text: 'It had no effect...' });
+        }
+
         if (enemyExec.m.currentHp === 0) {
-          events.push({ type: 'message', text: `${getMonsterSpecies(enemyExec.m.speciesId)?.name} fainted!` });
-          events.push({ type: 'faint', target: enemyTarget });
+          events.push({ type: 'message', text: `${defenderName} fainted!` });
+          events.push({ type: 'faint', target: exec.p === 1 ? 'opponent' : 'player' });
         }
       }
     }

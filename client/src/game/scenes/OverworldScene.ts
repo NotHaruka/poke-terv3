@@ -59,6 +59,9 @@ import { MinimapHUD, MinimapMarker } from '../ui/hud/MinimapHUD.js';
 import { DirectionalPointer } from '../ui/hud/DirectionalPointer.js';
 import { ControlsHUD } from '../ui/hud/ControlsHUD.js';
 
+import { BattleRequestManager } from '../battle/BattleRequestManager.js';
+import { BattleTransitionManager } from '../battle/BattleTransitionManager.js';
+
 export class OverworldScene implements Scene {
   private renderer: Renderer;
   private inputManager: InputManager;
@@ -71,6 +74,9 @@ export class OverworldScene implements Scene {
   private networkClient: NetworkClient | null;
   private audioManager: AudioManager | null = null;
   private debugMode = false;
+
+  private battleRequestManager: BattleRequestManager;
+  private battleTransitionManager: BattleTransitionManager;
 
   // QoL HUD instances
   private minimapHUD: MinimapHUD;
@@ -184,20 +190,42 @@ export class OverworldScene implements Scene {
     this.followerMonster = new FollowerMonster(this.player.x, this.player.y + 18);
     this.combatManager = new OverworldCombatManager(this.player, this.particleSystem);
     
+    // Battle Request and Transition Managers Setup
+    this.battleRequestManager = new BattleRequestManager(this.audioManager);
+    this.battleTransitionManager = new BattleTransitionManager(this.audioManager);
+
+    this.battleRequestManager.setCallbacks(
+      (req) => {
+        if (this.networkClient) {
+          this.networkClient.send({
+            type: PacketType.BattleChallengeAnswer,
+            challengerId: req.fromPlayerId,
+            accept: true
+          });
+          this.controlsHUD.showToast('Accepted battle challenge!', '⚔️', 2.5);
+        }
+      },
+      (req) => {
+        if (this.networkClient) {
+          this.networkClient.send({
+            type: PacketType.BattleChallengeAnswer,
+            challengerId: req.fromPlayerId,
+            accept: false
+          });
+          this.controlsHUD.showToast('Declined battle request.', '❌', 2.5);
+        }
+      }
+    );
+
     if (this.networkClient) {
       this.networkClient.on(PacketType.BattleChallengeResponse, (p: any) => {
-        this.pendingIncomingBattleRequest = {
-          challengerId: p.challengerId,
-          challengerName: p.challengerName
-        };
-        this.player.state = PlayerState.BattleRequestPending;
-        if (this.audioManager) this.audioManager.playSFX('open');
+        this.battleRequestManager.receiveRequest(p.challengerId, p.challengerId, p.challengerName, 15);
       });
 
       this.networkClient.on(PacketType.BattleChallengeResult, (p: any) => {
         if (!p.accepted) {
-          this.pendingOutgoingBattleRequest = null;
-          this.pendingIncomingBattleRequest = null;
+          this.battleRequestManager.clearOutgoingRequest();
+          this.battleRequestManager.clearIncomingRequest();
           if (this.player.state === PlayerState.BattleRequestPending) {
             this.player.state = PlayerState.Walking;
           }
@@ -206,12 +234,15 @@ export class OverworldScene implements Scene {
       });
 
       this.networkClient.on(PacketType.BattleStart, (p: any) => {
-        this.pendingOutgoingBattleRequest = null;
-        this.pendingIncomingBattleRequest = null;
+        this.battleRequestManager.clearOutgoingRequest();
+        this.battleRequestManager.clearIncomingRequest();
         this.player.state = PlayerState.Battling; // Freeze BOTH players now after agreement!
-        const game = (window as any).__game;
-        import('./BattleScene.js').then(m => {
-          game.sceneManager.push(new m.BattleScene(this.renderer, this.inputManager, this.networkClient!, this.audioManager, p));
+
+        this.battleTransitionManager.startTransition('pvp', 600, () => {
+          const game = (window as any).__game;
+          import('./BattleScene.js').then(m => {
+            game.sceneManager.push(new m.BattleScene(this.renderer, this.inputManager, this.networkClient!, this.audioManager, p));
+          });
         });
       });
 
@@ -665,8 +696,17 @@ private getNPCInFront(): NPCDefinition | null {
       if (this.inputManager.justPressed('Digit4')) this.combatManager.throwCapturePod();
     }
 
-    // Outgoing battle request cancellation check
-    if (this.pendingOutgoingBattleRequest) {
+    // Update battle request manager & transition manager
+    this.battleRequestManager.update(dt);
+    this.battleTransitionManager.update(dt);
+
+    if (this.battleRequestManager.hasIncomingRequest()) {
+      if (this.inputManager.justPressed('KeyY') || this.inputManager.justPressed('Enter')) {
+        this.battleRequestManager.acceptIncomingRequest();
+      } else if (this.inputManager.justPressed('KeyN') || this.inputManager.justPressed('Escape')) {
+        this.battleRequestManager.declineIncomingRequest();
+      }
+    } else if (this.battleRequestManager.hasOutgoingRequest()) {
       if (this.inputManager.justPressed('KeyC') || this.inputManager.justPressed('Escape')) {
         if (this.networkClient) {
           this.networkClient.send({
@@ -675,20 +715,8 @@ private getNPCInFront(): NPCDefinition | null {
             accept: false
           });
         }
-        this.pendingOutgoingBattleRequest = null;
-        if (this.player.state === PlayerState.BattleRequestPending) {
-          this.player.state = PlayerState.Walking;
-        }
+        this.battleRequestManager.clearOutgoingRequest();
         this.controlsHUD.showToast('Cancelled battle request.', 'ℹ️', 2.5);
-      }
-    }
-
-    // Incoming battle request response check (Player B can move while deciding)
-    if (this.pendingIncomingBattleRequest) {
-      if (this.inputManager.justPressed('KeyY') || this.inputManager.justPressed('Enter')) {
-        this.acceptIncomingBattleRequest();
-      } else if (this.inputManager.justPressed('KeyN') || this.inputManager.justPressed('Escape')) {
-        this.declineIncomingBattleRequest();
       }
     }
 
@@ -1357,7 +1385,10 @@ private getNPCInFront(): NPCDefinition | null {
     );
 
     // Render Non-Blocking Battle Request Overlay
-    this.renderBattleRequestOverlay(ctx);
+    this.battleRequestManager.render(ctx, GAME_WIDTH, GAME_HEIGHT);
+
+    // Render Battle Transition Screen Overlay (Flashes, Panels, Fades)
+    this.battleTransitionManager.render(ctx, GAME_WIDTH, GAME_HEIGHT);
 
     // Render Menus
     this.menuManager.render(ctx);
@@ -1395,7 +1426,7 @@ private getNPCInFront(): NPCDefinition | null {
   }
 
   private sendBattleChallenge(op: any): void {
-    if (this.pendingOutgoingBattleRequest || this.pendingIncomingBattleRequest || this.player.state === PlayerState.BattleRequestPending) {
+    if (this.battleRequestManager.hasOutgoingRequest() || this.battleRequestManager.hasIncomingRequest()) {
       this.controlsHUD.showToast('You already have a pending battle request.', '⚠️', 3.0);
       return;
     }
@@ -1404,12 +1435,8 @@ private getNPCInFront(): NPCDefinition | null {
         type: PacketType.BattleChallengeRequest,
         targetPlayerId: op.id
       });
-      this.pendingOutgoingBattleRequest = {
-        targetId: op.id,
-        targetName: op.username
-      };
-      this.player.state = PlayerState.BattleRequestPending;
-      this.controlsHUD.showToast(`Sent battle request to ${op.username}! Press C to cancel.`, '⚔️', 4.0);
+      this.battleRequestManager.setOutgoingRequest(op.id, op.username, 15);
+      this.controlsHUD.showToast(`Sent battle request to ${op.username}!`, '⚔️', 4.0);
     }
   }
 

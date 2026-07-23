@@ -1,6 +1,50 @@
 /** Monster data definitions and species database */
 
-import { MonsterSpecies, MonsterType, GrowthRate, EvolutionMethod, MonsterStats } from './types.js';
+import { MonsterSpecies, MonsterType, GrowthRate, EvolutionMethod, MonsterStats, MoveData, MoveCategory } from './types.js';
+
+export const MOVES_DATABASE: Record<number, MoveData> = {
+  1: { id: 1, name: 'Tackle', type: MonsterType.Normal, category: MoveCategory.Physical, power: 40, accuracy: 100, pp: 35, priority: 0, description: 'A physical charge attack.' },
+  2: { id: 2, name: 'Ember', type: MonsterType.Fire, category: MoveCategory.Special, power: 40, accuracy: 100, pp: 25, priority: 0, description: 'Fires small flames at the target.' },
+  3: { id: 3, name: 'Flame Wheel', type: MonsterType.Fire, category: MoveCategory.Physical, power: 60, accuracy: 100, pp: 20, priority: 0, description: 'Rolls into a fiery wheel to strike.' },
+  4: { id: 4, name: 'Vine Strike', type: MonsterType.Grass, category: MoveCategory.Physical, power: 45, accuracy: 100, pp: 25, priority: 0, description: 'Lashes out with sharp whip-like vines.' },
+  5: { id: 5, name: 'Solar Beam', type: MonsterType.Grass, category: MoveCategory.Special, power: 120, accuracy: 100, pp: 10, priority: 0, description: 'Absorbs solar light and fires a beam.' },
+  6: { id: 6, name: 'Water Pulse', type: MonsterType.Water, category: MoveCategory.Special, power: 60, accuracy: 100, pp: 20, priority: 0, description: 'Attacks with ultrasonic water pulses.' },
+  7: { id: 7, name: 'Hydro Pump', type: MonsterType.Water, category: MoveCategory.Special, power: 110, accuracy: 80, pp: 5, priority: 0, description: 'Blasts high-volume water at high pressure.' },
+  8: { id: 8, name: 'Quick Attack', type: MonsterType.Normal, category: MoveCategory.Physical, power: 40, accuracy: 100, pp: 30, priority: 1, description: 'An extremely fast strike that hits first.' },
+  9: { id: 9, name: 'Bite', type: MonsterType.Dark, category: MoveCategory.Physical, power: 60, accuracy: 100, pp: 25, priority: 0, description: 'Bites viciously with sharp fangs.' },
+  10: { id: 10, name: 'Gust', type: MonsterType.Flying, category: MoveCategory.Special, power: 40, accuracy: 100, pp: 35, priority: 0, description: 'Whips up a fierce gust of wind.' },
+  11: { id: 11, name: 'Wing Attack', type: MonsterType.Flying, category: MoveCategory.Physical, power: 60, accuracy: 100, pp: 35, priority: 0, description: 'Strikes the target with spread wings.' },
+  12: { id: 12, name: 'Thunder Shock', type: MonsterType.Electric, category: MoveCategory.Special, power: 40, accuracy: 100, pp: 30, priority: 0, description: 'Jolts the target with electric currents.' },
+};
+
+export function getMoveData(id: number): MoveData {
+  return MOVES_DATABASE[id] || {
+    id,
+    name: 'Tackle',
+    type: MonsterType.Normal,
+    category: MoveCategory.Physical,
+    power: 40,
+    accuracy: 100,
+    pp: 35,
+    priority: 0,
+    description: 'A physical charge attack.'
+  };
+}
+
+export function getDefaultMovesForSpecies(speciesId: number): number[] {
+  switch (speciesId) {
+    case 1: case 2: case 3: // Fire types
+      return [1, 2, 3, 8];
+    case 4: case 5: case 6: // Grass types
+      return [1, 4, 5, 8];
+    case 7: case 8: case 9: // Water types
+      return [1, 6, 7, 8];
+    case 10: case 11: // Flying / Normal
+      return [1, 10, 11, 8];
+    default:
+      return [1, 2, 6, 8];
+  }
+}
 
 // Base monster species definitions
 export const MONSTER_SPECIES: MonsterSpecies[] = [
