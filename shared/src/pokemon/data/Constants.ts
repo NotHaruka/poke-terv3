@@ -30,7 +30,13 @@ export const INPUT_BUFFER_SIZE = 60;
 export const RECONNECT_TIMEOUT = 5000;
 
 // Battle
+export const MAX_POKEMON_LEVEL = 100;
+export const MAX_IV_VALUE = 31;
+export const MAX_EV_TOTAL = 510;
+export const MAX_EV_PER_STAT = 252;
+
 export const BATTLE_BACKGROUNDS: Record<string, string> = {
+
   grass: '#4a8c3f',
   water: '#3b6fa0',
   cave: '#2a2a2a',

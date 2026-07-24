@@ -1,1 +1,180 @@
-export const Abilities = {};
+import { Ability } from '../models/Ability.js';
+
+export const ABILITIES_DATABASE: Record<string, Ability> = {
+  overgrow: {
+    id: 'overgrow',
+    name: 'Overgrow',
+    description: 'Powers up Grass-type moves when the Pokémon is in trouble.',
+    shortDescription: 'Boosts Grass moves in a pinch.',
+  },
+  blaze: {
+    id: 'blaze',
+    name: 'Blaze',
+    description: 'Powers up Fire-type moves when the Pokémon is in trouble.',
+    shortDescription: 'Boosts Fire moves in a pinch.',
+  },
+  torrent: {
+    id: 'torrent',
+    name: 'Torrent',
+    description: 'Powers up Water-type moves when the Pokémon is in trouble.',
+    shortDescription: 'Boosts Water moves in a pinch.',
+  },
+  shield_dust: {
+    id: 'shield_dust',
+    name: 'Shield Dust',
+    description: 'Blocks the additional effects of attacks taken.',
+    shortDescription: 'Blocks move additional effects.',
+  },
+  compound_eyes: {
+    id: 'compound_eyes',
+    name: 'Compound Eyes',
+    description: "The Pokémon's compound eyes boost its accuracy.",
+    shortDescription: 'Boosts move accuracy by 30%.',
+  },
+  intimidate: {
+    id: 'intimidate',
+    name: 'Intimidate',
+    description: "Lowers the opposing Pokémon's Attack stat upon entering battle.",
+    shortDescription: 'Lowers foe Attack on entry.',
+  },
+  static: {
+    id: 'static',
+    name: 'Static',
+    description: 'Contact with the Pokémon may cause paralysis.',
+    shortDescription: 'May paralyze attackers making contact.',
+  },
+  lightning_rod: {
+    id: 'lightning_rod',
+    name: 'Lightning Rod',
+    description: 'Draws in all Electric-type moves to boost Sp. Atk.',
+    shortDescription: 'Draws in Electric moves to boost Sp. Atk.',
+  },
+  levitate: {
+    id: 'levitate',
+    name: 'Levitate',
+    description: 'Gives full immunity to all Ground-type moves.',
+    shortDescription: 'Immune to Ground moves.',
+  },
+  speed_boost: {
+    id: 'speed_boost',
+    name: 'Speed Boost',
+    description: "Its Speed stat is boosted at the end of each turn.",
+    shortDescription: 'Boosts Speed every turn.',
+  },
+  sturdy: {
+    id: 'sturdy',
+    name: 'Sturdy',
+    description: 'Cannot be knocked out with one hit when at full HP.',
+    shortDescription: 'Survives 1-hit KO at full HP.',
+  },
+  flash_fire: {
+    id: 'flash_fire',
+    name: 'Flash Fire',
+    description: 'Powers up Fire-type moves if hit by a Fire-type move.',
+    shortDescription: 'Absorbs Fire moves to power up Fire attacks.',
+  },
+  natural_cure: {
+    id: 'natural_cure',
+    name: 'Natural Cure',
+    description: 'All status conditions heal when the Pokémon switches out.',
+    shortDescription: 'Cures status conditions on switch-out.',
+  },
+  chlorophyll: {
+    id: 'chlorophyll',
+    name: 'Chlorophyll',
+    description: "Boosts the Pokémon's Speed stat in harsh sunlight.",
+    shortDescription: 'Doubles Speed in harsh sunlight.',
+  },
+  solar_power: {
+    id: 'solar_power',
+    name: 'Solar Power',
+    description: 'Boosts Sp. Atk in harsh sunlight at the cost of HP.',
+    shortDescription: 'Boosts Sp. Atk in sun, loses HP.',
+  },
+  swift_swim: {
+    id: 'swift_swim',
+    name: 'Swift Swim',
+    description: "Boosts the Pokémon's Speed stat in rain.",
+    shortDescription: 'Doubles Speed in rain.',
+  },
+  inner_focus: {
+    id: 'inner_focus',
+    name: 'Inner Focus',
+    description: 'Protects the Pokémon from flinching or Intimidate.',
+    shortDescription: 'Prevents flinching and Intimidate.',
+  },
+  pressure: {
+    id: 'pressure',
+    name: 'Pressure',
+    description: "Raises opposing Pokémon's PP usage.",
+    shortDescription: 'Doubles opponent PP cost.',
+  },
+  rain_dish: {
+    id: 'rain_dish',
+    name: 'Rain Dish',
+    description: 'The Pokémon gradually regains HP in rain.',
+    shortDescription: 'Restores HP in rain.',
+  },
+  run_away: {
+    id: 'run_away',
+    name: 'Run Away',
+    description: 'Enables a sure escape from wild Pokémon.',
+    shortDescription: 'Sure escape from wild battles.',
+  },
+  shed_skin: {
+    id: 'shed_skin',
+    name: 'Shed Skin',
+    description: 'The Pokémon may heal its own status conditions by shedding its skin.',
+    shortDescription: 'May heal status conditions.',
+  },
+  tinted_lens: {
+    id: 'tinted_lens',
+    name: 'Tinted Lens',
+    description: 'The Pokémon can use "not very effective" moves to deal regular damage.',
+    shortDescription: 'Powers up not very effective moves.',
+  },
+  keen_eye: {
+    id: 'keen_eye',
+    name: 'Keen Eye',
+    description: "Keeps the Pokémon's accuracy stat from being lowered.",
+    shortDescription: 'Prevents accuracy reduction.',
+  },
+  tangled_feet: {
+    id: 'tangled_feet',
+    name: 'Tangled Feet',
+    description: 'Raises evasion if the Pokémon is confused.',
+    shortDescription: 'Raises evasion when confused.',
+  },
+  big_pecks: {
+    id: 'big_pecks',
+    name: 'Big Pecks',
+    description: "Protects the Pokémon from Defense-lowering attacks.",
+    shortDescription: 'Prevents Defense drops.',
+  },
+  thick_fat: {
+    id: 'thick_fat',
+    name: 'Thick Fat',
+    description: 'A thick layer of fat protects the Pokémon from Fire- and Ice-type moves.',
+    shortDescription: 'Halves Fire and Ice damage.',
+  },
+  tough_claws: {
+    id: 'tough_claws',
+    name: 'Tough Claws',
+    description: "Powers up moves that make direct contact with the target.",
+    shortDescription: 'Powers up contact moves.',
+  },
+  drought: {
+    id: 'drought',
+    name: 'Drought',
+    description: 'Turns the sunlight harsh when the Pokémon enters a battle.',
+    shortDescription: 'Summons harsh sunlight on entry.',
+  },
+  mega_launcher: {
+    id: 'mega_launcher',
+    name: 'Mega Launcher',
+    description: 'Powers up pulse moves.',
+    shortDescription: 'Powers up pulse moves.',
+  },
+};
+
+export const Abilities = ABILITIES_DATABASE;

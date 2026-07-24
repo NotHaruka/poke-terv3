@@ -1,1 +1,6 @@
-export class Ability {}
+export interface Ability {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly shortDescription: string;
+}
