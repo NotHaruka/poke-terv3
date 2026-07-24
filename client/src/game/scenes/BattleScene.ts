@@ -1,23 +1,23 @@
-import { Scene } from '../../engine/SceneManager.js';
-import { Renderer } from '../../engine/Renderer.js';
-import { InputManager } from '../../engine/InputManager.js';
-import { NetworkClient } from '../network/NetworkClient.js';
-import { AudioManager } from '../../engine/AudioManager.js';
+import { Scene } from '../../engine/renderer/SceneManager.js';
+import { Renderer } from '../../engine/renderer/Renderer.js';
+import { InputManager } from '../../engine/input/InputManager.js';
+import { WorldSync } from '../pokemon/multiplayer/WorldSync.js';
+import { AudioManager } from '../../engine/audio/AudioManager.js';
 import { 
   BattleStartPacket, BattleResultPacket, MonsterSnapshot,
   getDefaultMovesForSpecies, getMonsterSpecies
 } from 'poke-ter-shared';
 
-import { BattleRenderer } from '../battle/BattleRenderer.js';
-import { BattleUI } from '../battle/BattleUI.js';
-import { BattleMessageBox } from '../battle/BattleMessageBox.js';
-import { BattleAnimationManager } from '../battle/BattleAnimationManager.js';
-import { BattleStateMachine, BattleState } from '../battle/BattleStateMachine.js';
+import { BattleRenderer } from '../pokemon/battle/BattleRenderer.js';
+import { BattleUI } from '../pokemon/battle/BattleUI.js';
+import { BattleMessageBox } from '../pokemon/battle/BattleMessageBox.js';
+import { BattleAnimationManager } from '../pokemon/battle/BattleAnimationManager.js';
+import { BattleStateMachine, BattleState } from '../pokemon/battle/BattleStateMachine.js';
 
 export class BattleScene implements Scene {
   private rendererEngine: Renderer;
   private inputManager: InputManager;
-  private networkClient: NetworkClient;
+  private networkClient: WorldSync;
   private audioManager: AudioManager | null;
   private startPacket: BattleStartPacket;
 
@@ -43,7 +43,7 @@ export class BattleScene implements Scene {
   constructor(
     renderer: Renderer,
     inputManager: InputManager,
-    networkClient: NetworkClient,
+    networkClient: WorldSync,
     audioManager: AudioManager | null,
     startPacket: BattleStartPacket,
     onExit?: () => void

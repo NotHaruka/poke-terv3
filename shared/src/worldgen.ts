@@ -19,8 +19,8 @@
  * multiplayer, and for the offline client fallback to match the server.
  */
 
-import { WORLD_SEED, TOWN_CHUNK_SPACING, CHUNK_SIZE, TILE_SIZE } from './constants.js';
-import { NPCDefinition, Vec2, Direction } from './types.js';
+import { WORLD_SEED, TOWN_CHUNK_SPACING, CHUNK_SIZE, TILE_SIZE } from './pokemon/data/Constants.js';
+import { NPCDefinition, Vec2, Direction } from './pokemon/models/PokemonInstance.js';
 
 // ===== Tile IDs (shared meaning across client + server renderers) =====
 export const TILE_VOID = 0;

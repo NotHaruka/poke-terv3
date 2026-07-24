@@ -1,7 +1,7 @@
 /** Core math utilities */
 
-import { Vec2, Direction } from './types.js';
-import { DIAGONAL_NORMALIZER } from './constants.js';
+import { Vec2, Direction } from './pokemon/models/PokemonInstance.js';
+import { DIAGONAL_NORMALIZER } from './pokemon/data/Constants.js';
 
 export function vec2(x: number, y: number): Vec2 {
   return { x, y };

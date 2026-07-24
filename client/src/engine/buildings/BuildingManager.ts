@@ -5,8 +5,8 @@
 
 import { BuildingInstance, BuildingDefinition } from './BuildingDefinition.js';
 import { BuildingRegistry } from '../registries/BuildingRegistry.js';
-import { CollisionSystem, Collider } from '../Collision.js';
-import { BuildingRenderer } from '../rendering/BuildingRenderer.js';
+import { CollisionSystem, Collider } from '../physics/Collision.js';
+import { BuildingRenderer } from '../renderer/BuildingRenderer.js';
 import { isTownChunk, hash2D } from 'poke-ter-shared';
 
 export class BuildingManager {

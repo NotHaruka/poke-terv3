@@ -1,26 +1,26 @@
 /** Main overworld exploration scene with full QoL HUD, Minimap, Friend Radar, and Controls */
 
-import { Scene } from '../../engine/SceneManager.js';
-import { Renderer } from '../../engine/Renderer.js';
-import { InputManager } from '../../engine/InputManager.js';
-import { Camera } from '../../engine/Camera.js';
-import { CollisionSystem, Collider } from '../../engine/Collision.js';
-import { ParticleSystem } from '../../engine/ParticleSystem.js';
-import { Player } from '../entities/Player.js';
-import { ChunkManager } from '../world/ChunkManager.js';
-import { UIManager } from '../ui/UIManager.js';
-import { NetworkClient } from '../network/NetworkClient.js';
-import { envSystem } from '../../engine/EnvironmentSystem.js';
-import { AudioManager } from '../../engine/AudioManager.js';
-import { MusicManager } from '../../engine/MusicManager.js';
-import { MenuManager } from '../ui/menus/MenuManager.js';
-import { ClockManager } from '../ui/menus/ClockManager.js';
-import { MainMenu } from '../ui/menus/MainMenu.js';
-import { BackpackMenu } from '../ui/menus/BackpackMenu.js';
-import { MonsterDexMenu } from '../ui/menus/MonsterDexMenu.js';
-import { PartyMenu } from '../ui/menus/PartyMenu.js';
-import { PlayerCardMenu } from '../ui/menus/PlayerCardMenu.js';
-import { OutfitMenu } from '../ui/menus/OutfitMenu.js';
+import { Scene } from '../../engine/renderer/SceneManager.js';
+import { Renderer } from '../../engine/renderer/Renderer.js';
+import { InputManager } from '../../engine/input/InputManager.js';
+import { Camera } from '../../engine/camera/Camera.js';
+import { CollisionSystem, Collider } from '../../engine/physics/Collision.js';
+import { ParticleSystem } from '../../engine/particles/ParticleSystem.js';
+import { Player } from '../pokemon/entities/Player.js';
+import { ChunkManager } from '../pokemon/world/ChunkManager.js';
+import { UIManager } from '../pokemon/ui/UIManager.js';
+import { WorldSync } from '../pokemon/multiplayer/WorldSync.js';
+import { envSystem } from '../../engine/physics/EnvironmentSystem.js';
+import { AudioManager } from '../../engine/audio/AudioManager.js';
+import { MusicManager } from '../../engine/audio/MusicManager.js';
+import { MenuManager } from '../pokemon/ui/menus/MenuManager.js';
+import { ClockManager } from '../pokemon/ui/menus/ClockManager.js';
+import { MainMenu } from '../pokemon/ui/menus/MainMenu.js';
+import { BackpackMenu } from '../pokemon/ui/menus/BackpackMenu.js';
+import { MonsterDexMenu } from '../pokemon/ui/menus/MonsterDexMenu.js';
+import { PartyMenu } from '../pokemon/ui/menus/PartyMenu.js';
+import { PlayerCardMenu } from '../pokemon/ui/menus/PlayerCardMenu.js';
+import { OutfitMenu } from '../pokemon/ui/menus/OutfitMenu.js';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -41,8 +41,8 @@ import {
   NPCDefinition
 } from 'poke-ter-shared';
 
-import { NPCRenderer } from '../../engine/rendering/NPCRenderer.js';
-import { PlayerRenderer } from '../../engine/rendering/PlayerRenderer.js';
+import { NPCRenderer } from '../../engine/renderer/NPCRenderer.js';
+import { PlayerRenderer } from '../../engine/renderer/PlayerRenderer.js';
 
 import { BuildingManager } from '../../engine/buildings/BuildingManager.js';
 import { InteriorManager } from '../../engine/interiors/InteriorManager.js';
@@ -50,20 +50,20 @@ import { TransitionManager } from '../../engine/doors/TransitionManager.js';
 import { DoorSystem } from '../../engine/doors/DoorSystem.js';
 
 // Gameplay & Overworld Combat imports
-import { FollowerMonster } from '../entities/FollowerMonster.js';
-import { OverworldCombatManager } from '../combat/OverworldCombatManager.js';
-import { StarterSelectModal } from '../ui/menus/StarterSelectModal.js';
-import { SupplyMartMenu } from '../ui/menus/SupplyMartMenu.js';
+import { PokemonFollower } from '../pokemon/entities/PokemonFollower.js';
+import { EncounterManager } from '../pokemon/world/EncounterManager.js';
+import { StarterSelectModal } from '../pokemon/ui/menus/StarterSelectModal.js';
+import { SupplyMartMenu } from '../pokemon/ui/menus/SupplyMartMenu.js';
 import { MONSTER_SPECIES, calculateStats, getMonsterSpecies, getDefaultMovesForSpecies } from 'poke-ter-shared';
 import { TitleScreenScene } from './TitleScreenScene.js';
 
 // QoL HUD imports
-import { MinimapHUD, MinimapMarker } from '../ui/hud/MinimapHUD.js';
-import { DirectionalPointer } from '../ui/hud/DirectionalPointer.js';
-import { ControlsHUD } from '../ui/hud/ControlsHUD.js';
+import { MinimapHUD, MinimapMarker } from '../pokemon/ui/hud/MinimapHUD.js';
+import { DirectionalPointer } from '../pokemon/ui/hud/DirectionalPointer.js';
+import { ControlsHUD } from '../pokemon/ui/hud/ControlsHUD.js';
 
-import { BattleRequestManager } from '../battle/BattleRequestManager.js';
-import { BattleTransitionManager } from '../battle/BattleTransitionManager.js';
+import { BattleRequestManager } from '../pokemon/battle/BattleRequestManager.js';
+import { BattleTransitionManager } from '../pokemon/battle/BattleTransitionManager.js';
 import { BattleScene } from './BattleScene.js';
 
 export class OverworldScene implements Scene {
@@ -75,7 +75,7 @@ export class OverworldScene implements Scene {
   private player: Player;
   private chunkManager: ChunkManager;
   private uiManager: UIManager;
-  private networkClient: NetworkClient | null;
+  private networkClient: WorldSync | null;
   private audioManager: AudioManager | null = null;
   private debugMode = false;
 
@@ -107,7 +107,7 @@ export class OverworldScene implements Scene {
 
   // Multiplayer player list
   private otherPlayers = new Map<string, PlayerSnapshot>();
-  private otherFollowers = new Map<string, FollowerMonster>();
+  private otherFollowers = new Map<string, PokemonFollower>();
   private autosaveTimer: number = 0;
   private musicUpdateTimer: number = 0;
 
@@ -129,8 +129,8 @@ export class OverworldScene implements Scene {
   private playTimeMs: number = 0;
 
   // Active Companion Follower & Overworld Combat
-  private followerMonster: FollowerMonster;
-  private combatManager: OverworldCombatManager;
+  private followerMonster: PokemonFollower;
+  private combatManager: EncounterManager;
   private totalAnimTime: number = 0;
 
   // Non-blocking Battle Request state
@@ -164,7 +164,7 @@ export class OverworldScene implements Scene {
   constructor(
     renderer: Renderer,
     inputManager: InputManager,
-    networkClient: NetworkClient | null = null,
+    networkClient: WorldSync | null = null,
     audioManager: AudioManager | null = null,
     profile?: import('poke-ter-shared').PlayerProfile
   ) {
@@ -214,8 +214,8 @@ export class OverworldScene implements Scene {
     }
 
     // Active Companion & Combat Setup
-    this.followerMonster = new FollowerMonster(this.player.x, this.player.y + 18);
-    this.combatManager = new OverworldCombatManager(this.player, this.particleSystem);
+    this.followerMonster = new PokemonFollower(this.player.x, this.player.y + 18);
+    this.combatManager = new EncounterManager(this.player, this.particleSystem);
     
     // Battle Request and Transition Managers Setup
     this.battleRequestManager = new BattleRequestManager(this.audioManager);
@@ -286,7 +286,26 @@ export class OverworldScene implements Scene {
         });
       });
 
-      this.networkClient.on(PacketType.Welcome, this.onWelcome);
+      
+      this.networkClient.on(35 /* BattleChallengeResponse */, (p: any) => {
+        import('../pokemon/ui/menus/BattleRequestMenu.js').then(m => {
+          this.menuManager.openMenu(new m.BattleRequestMenu(p.challengerId, p.challengerName, this.networkClient!, () => {
+            this.menuManager.closeMenu();
+          }));
+        });
+      });
+      this.networkClient.on(37 /* BattleChallengeResult */, (p: any) => {
+        if (!p.accepted) {
+           this.controlsHUD.showToast(p.message || 'Battle request declined.', '❌', 3.0);
+        }
+      });
+      this.networkClient.on(30 /* BattleStart */, (p: any) => {
+        const game = (window as any).__game;
+        import('./BattleScene.js').then(m => {
+          game.sceneManager.push(new m.BattleScene(this.renderer, this.inputManager, this.networkClient!, this.audioManager, p));
+        });
+      });
+this.networkClient.on(PacketType.Welcome, this.onWelcome);
       this.networkClient.on(PacketType.MapChangeResponse, this.onMapChange);
       this.networkClient.on(PacketType.PlayerJoin, this.onPlayerJoin);
       this.networkClient.on(PacketType.PlayerLeave, this.onPlayerLeave);
@@ -646,7 +665,7 @@ export class OverworldScene implements Scene {
           this.otherPlayers.set(op.id, op);
           if (op.activeMonster) {
             console.log(`[Multiplayer] Spawning active companion for ${op.username}: ${op.activeMonster.nickname || 'Monster'}`);
-            this.otherFollowers.set(op.id, new FollowerMonster(op.position.x, op.position.y + 18));
+            this.otherFollowers.set(op.id, new PokemonFollower(op.position.x, op.position.y + 18));
           }
         }
       }
@@ -688,7 +707,7 @@ export class OverworldScene implements Scene {
           this.otherPlayers.set(op.id, op);
           if (op.activeMonster) {
             console.log(`[Multiplayer] Spawning active companion for ${op.username}: ${op.activeMonster.nickname || 'Monster'}`);
-            this.otherFollowers.set(op.id, new FollowerMonster(op.position.x, op.position.y + 18));
+            this.otherFollowers.set(op.id, new PokemonFollower(op.position.x, op.position.y + 18));
           }
         }
       }
@@ -705,7 +724,7 @@ export class OverworldScene implements Scene {
       
       if (p.activeMonster) {
         if (!this.otherFollowers.has(p.id)) {
-          this.otherFollowers.set(p.id, new FollowerMonster(p.position.x, p.position.y + 18));
+          this.otherFollowers.set(p.id, new PokemonFollower(p.position.x, p.position.y + 18));
         }
       } else {
         this.otherFollowers.delete(p.id);
@@ -1169,7 +1188,7 @@ private getNPCInFront(): NPCDefinition | null {
         const activeMon = op.activeMonster;
         let follower = this.otherFollowers.get(opId);
         if (!follower) {
-          follower = new FollowerMonster(op.position.x, op.position.y + 18);
+          follower = new PokemonFollower(op.position.x, op.position.y + 18);
           this.otherFollowers.set(opId, follower);
           console.log(`[Multiplayer] Spawning missing active companion for ${op.username}`);
         }
@@ -1328,7 +1347,7 @@ private getNPCInFront(): NPCDefinition | null {
         
         const op = this.getOtherPlayerInFront();
         if (op) {
-          import('../ui/menus/PlayerInteractionMenu.js').then(m => {
+          import('../pokemon/ui/menus/PlayerInteractionMenu.js').then(m => {
             this.menuManager.openMenu(new m.PlayerInteractionMenu(op.username, (option) => {
               if (option === 'Challenge to Battle') {
                 this.sendBattleChallenge(op);
@@ -1341,7 +1360,20 @@ private getNPCInFront(): NPCDefinition | null {
         }
         
         if (!interacted) {
-          const npc = this.getNPCInFront();
+          
+        const op = this.getOtherPlayerInFront();
+        if (op) {
+          if (this.networkClient) {
+            this.networkClient.send({
+              type: 34, // BattleChallengeRequest
+              targetPlayerId: op.id
+            } as any);
+            this.controlsHUD.showToast(`Sent battle request to ${op.username}!`, '⚔️', 3.0);
+          }
+          return;
+        }
+        
+const npc = this.getNPCInFront();
           if (npc) {
             if (npc.sprite === 'clerk' || npc.name.includes('Mart Clerk')) {
               this.menuManager.openMenu(new SupplyMartMenu(this.player));

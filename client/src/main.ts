@@ -1,16 +1,16 @@
 /** Poke-ter - Main entry point */
 
 import './style.css';
-import { GameLoop } from './engine/GameLoop.js';
-import { InputManager } from './engine/InputManager.js';
-import { Renderer } from './engine/Renderer.js';
-import { SceneManager } from './engine/SceneManager.js';
+import { GameLoop } from './engine/utils/GameLoop.js';
+import { InputManager } from './engine/input/InputManager.js';
+import { Renderer } from './engine/renderer/Renderer.js';
+import { SceneManager } from './engine/renderer/SceneManager.js';
 import { TitleScreenScene } from './game/scenes/TitleScreenScene.js';
-import { NetworkClient } from './game/network/NetworkClient.js';
-import { AudioManager } from './engine/AudioManager.js';
-import { MusicManager } from './engine/MusicManager.js';
+import { WorldSync } from './game/pokemon/multiplayer/WorldSync.js';
+import { AudioManager } from './engine/audio/AudioManager.js';
+import { MusicManager } from './engine/audio/MusicManager.js';
 import { InteriorRegistry } from './engine/interiors/InteriorRegistry.js';
-import { TouchControls } from './engine/TouchControls.js';
+import { TouchControls } from './engine/input/TouchControls.js';
 
 class PokeTerGame {
   private renderer: Renderer;
@@ -18,7 +18,7 @@ class PokeTerGame {
   private touchControls: TouchControls;
   public sceneManager: SceneManager; // Make public to access from scenes easily
   private gameLoop: GameLoop;
-  private networkClient: NetworkClient | null = null;
+  private networkClient: WorldSync | null = null;
   private audioManager: AudioManager;
   public musicManager: MusicManager;
 
@@ -47,7 +47,7 @@ class PokeTerGame {
     );
 
     // Try to connect to server first so we can pass it to scene
-    this.networkClient = new NetworkClient('Player');
+    this.networkClient = new WorldSync('Player');
     this.tryConnect();
 
     // Start with title scene

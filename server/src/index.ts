@@ -11,8 +11,8 @@ import {
   PacketType, AnyPacket, PlayerLeavePacket,
 } from 'poke-ter-shared';
 
-import { GameState } from './game.js';
-import { handlePacket } from './handlers.js';
+import { GameState } from './pokemon/world/game.js';
+import { handlePacket } from './pokemon/networking/handlers.js';
 
 async function startServer() {
   const app = express();

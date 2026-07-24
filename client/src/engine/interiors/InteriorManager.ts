@@ -5,8 +5,8 @@
 
 import { InteriorDefinition, FurnitureItem } from './InteriorDefinition.js';
 import { InteriorRegistry } from './InteriorRegistry.js';
-import { CollisionSystem, Collider } from '../Collision.js';
-import { InteriorRenderer } from '../rendering/InteriorRenderer.js';
+import { CollisionSystem, Collider } from '../physics/Collision.js';
+import { InteriorRenderer } from '../renderer/InteriorRenderer.js';
 
 export class InteriorManager {
   private activeInterior: InteriorDefinition | null = null;

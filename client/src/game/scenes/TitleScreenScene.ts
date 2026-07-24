@@ -2,7 +2,7 @@ import { Scene } from '../../engine/SceneManager.js';
 import { Renderer } from '../../engine/Renderer.js';
 import { InputManager } from '../../engine/InputManager.js';
 import { AudioManager } from '../../engine/AudioManager.js';
-import { NetworkClient } from '../network/NetworkClient.js';
+import { WorldSync } from '../network/WorldSync.js';
 import { CharacterCreationScene } from './CharacterCreationScene.js';
 import { OverworldScene } from './OverworldScene.js';
 import { PlayerProfile } from 'poke-ter-shared';
@@ -10,7 +10,7 @@ import { PlayerProfile } from 'poke-ter-shared';
 export class TitleScreenScene implements Scene {
   private renderer: Renderer;
   private inputManager: InputManager;
-  private networkClient: NetworkClient | null;
+  private networkClient: WorldSync | null;
   private audioManager: AudioManager | null;
 
   private menuOptions: string[] = [];
@@ -21,7 +21,7 @@ export class TitleScreenScene implements Scene {
   constructor(
     renderer: Renderer,
     inputManager: InputManager,
-    networkClient: NetworkClient | null,
+    networkClient: WorldSync | null,
     audioManager: AudioManager | null
   ) {
     this.renderer = renderer;

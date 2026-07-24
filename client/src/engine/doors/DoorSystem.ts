@@ -7,12 +7,12 @@
 import { BuildingManager } from '../buildings/BuildingManager.js';
 import { InteriorManager } from '../interiors/InteriorManager.js';
 import { TransitionManager } from './TransitionManager.js';
-import { AudioManager } from '../AudioManager.js';
-import { MusicManager } from '../MusicManager.js';
-import { Player } from '../../game/entities/Player.js';
-import { Camera } from '../Camera.js';
+import { AudioManager } from '../audio/AudioManager.js';
+import { MusicManager } from '../audio/MusicManager.js';
+import { Player } from '../../game/pokemon/entities/Player.js';
+import { Camera } from '../camera/Camera.js';
 import { PacketType, findSafeSpawn } from 'poke-ter-shared';
-import { NetworkClient } from '../../game/network/NetworkClient.js';
+import { WorldSync } from '../../game/pokemon/multiplayer/WorldSync.js';
 
 export interface SavedOverworldState {
   mapId: string;
@@ -27,7 +27,7 @@ export class DoorSystem {
   private interiorManager: InteriorManager;
   private transitionManager: TransitionManager;
   private audioManager: AudioManager | null;
-  private networkClient: NetworkClient | null;
+  private networkClient: WorldSync | null;
   private player: Player;
   private camera: Camera;
 
@@ -42,7 +42,7 @@ export class DoorSystem {
     interiorManager: InteriorManager,
     transitionManager: TransitionManager,
     audioManager: AudioManager | null,
-    networkClient: NetworkClient | null,
+    networkClient: WorldSync | null,
     player: Player,
     camera: Camera
   ) {
